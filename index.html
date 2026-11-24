@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>便利商店物語</title>
+<meta name="description" content="3D 便利商店經營模擬：看著顧客進店、挑貨、排隊結帳，把小店經營成連鎖企業。">
+<meta name="theme-color" content="#1f4e79">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="便利商店物語">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js", "three/addons/": "./vendor/" } }
+</script>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="overlay"></div>
+
+<header id="topbar">
+  <div class="brand"><span class="logo">日</span><div><b id="store-name">日日好商店</b><small>營業中</small></div></div>
+  <div class="chip"><span class="ic">💰</span><div><small>現金</small><b id="v-cash">$0</b></div></div>
+  <div class="chip"><span class="ic">📈</span><div><small>今日營收</small><b id="v-rev" class="pos">$0</b></div></div>
+  <div class="chip"><span class="ic">👥</span><div><small>顧客數</small><b id="v-cust">0</b></div></div>
+  <div class="chip"><span class="ic">⭐</span><div><small>門市評價 <i id="v-rating-n">3.4</i></small><b id="v-rating" class="stars">★★★☆☆</b></div></div>
+  <div class="chip clock"><span class="ic" id="v-weather">☀️</span><div><small id="v-day">第 1 天</small><b id="v-time">07:00</b></div></div>
+  <div class="speed">
+    <button data-speed="0" title="暫停">❚❚</button>
+    <button data-speed="1" title="×1">▶</button>
+    <button data-speed="2" title="×2">▶▶</button>
+    <button data-speed="3" title="×3">▶▶▶</button>
+  </div>
+</header>
+
+<div id="mission"></div>
+
+<div id="camtools">
+  <button id="rot-l" title="向左轉">⟲</button>
+  <button id="cam-reset" title="重設鏡頭">◎</button>
+  <button id="rot-r" title="向右轉">⟳</button>
+  <button id="side-toggle" title="門市資訊">📋</button>
+</div>
+
+<aside id="side">
+  <section><h3>🏪 門市資訊</h3><div id="side-info"></div></section>
+  <section><h3>📦 庫存狀態</h3><div id="side-inv"></div></section>
+  <section><h3>📰 最新消息</h3><div id="side-news"></div></section>
+</aside>
+
+<div id="assistant"><div class="ava">葵</div><p id="assistant-text"></p></div>
+
+<nav id="menu">
+  <button data-panel="products"><span>🏷️</span>商品</button>
+  <button data-panel="orders"><span>📦</span>進貨</button>
+  <button data-panel="build"><span>🛠️</span>擺設</button>
+  <button data-panel="staff"><span>🧑‍💼</span>員工</button>
+  <button data-panel="report"><span>📊</span>報表</button>
+  <button data-panel="missions"><span>🏆</span>任務</button>
+  <button data-panel="expand"><span>🏗️</span>擴張</button>
+  <button data-panel="system"><span>⚙️</span>系統</button>
+</nav>
+
+<div id="buildbar"></div>
+
+<div id="sheet-backdrop"></div>
+<div id="sheet">
+  <div class="sheet-head"><h2 id="sheet-title"></h2><button id="sheet-close">✕</button></div>
+  <div id="sheet-body"></div>
+</div>
+<div id="toasts"></div>
+
+<noscript>這個遊戲需要開啟 JavaScript。</noscript>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
