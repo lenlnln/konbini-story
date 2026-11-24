@@ -68,6 +68,7 @@ export function newGame() {
   add('counter', 6, 4, 3); add('coffee', 7, 2, 3); add('plant', 7, 6, 0);
   for (const f of s.fixtures) fillFixture(s, f, 0.85);
   s.staff.push(makeStaff(s.nextId++, 'clerk', { name: '林小葵', shift: 'all', skill: 2, speed: 2 }));
+  s.staff[0].sprite = 'staff_f';
   s.staff[0].wage = 900;
   return s;
 }

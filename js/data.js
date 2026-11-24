@@ -146,3 +146,17 @@ export const ASSISTANT_TIPS = [
   '下雨天雨傘和熱食賣得特別好。',
   '雇用店長後，每天晚上會自動幫你叫貨。',
 ];
+
+// AI 繪製的角色立繪（art/chars/<id>.webp），h = 遊戲中的高度
+export const SPRITES = {
+  staff_f: { h: 1.55 }, staff_m: { h: 1.6 }, manager: { h: 1.62 },
+  student_f: { h: 1.45 }, student_m: { h: 1.5 },
+  office_f: { h: 1.55 }, office_m: { h: 1.62 },
+  resident_f: { h: 1.52 }, resident_m: { h: 1.58 },
+  elder_f: { h: 1.4 }, elder_m: { h: 1.45 },
+  night_f: { h: 1.52 }, night_m: { h: 1.6 },
+};
+export const TYPE_SPRITES = {
+  student: ['student_f', 'student_m'], office: ['office_f', 'office_m'], resident: ['resident_f', 'resident_m'],
+  elder: ['elder_f', 'elder_m'], night: ['night_f', 'night_m'],
+};

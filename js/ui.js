@@ -153,7 +153,7 @@ export class UI {
     for (const [a, b] of this.bubbles) {
       b.t -= dt;
       if (b.t <= 0) { b.el.remove(); this.bubbles.delete(a); continue; }
-      v.set(a.obj.position.x, 1.75 * a.obj.scale.y, a.obj.position.z);
+      v.set(a.obj.position.x, (a.obj.userData.h || 1.5) + 0.15, a.obj.position.z);
       const p = w.project(v);
       b.el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
       b.el.style.display = p.visible ? '' : 'none';
@@ -164,7 +164,7 @@ export class UI {
       if (!a.name && a.kind !== 'staff') continue;
       let el = this.nameTags.get(a);
       if (!el) { el = document.createElement('div'); el.className = 'nametag' + (a.kind === 'staff' ? ' staff' : ''); el.textContent = a.kind === 'staff' ? (this.s.staff.find(x => x.id === a.sid)?.name || '') : '💛' + a.name; this.overlay.appendChild(el); this.nameTags.set(a, el); }
-      v.set(a.obj.position.x, 1.45 * a.obj.scale.y, a.obj.position.z);
+      v.set(a.obj.position.x, (a.obj.userData.h || 1.5) + 0.02, a.obj.position.z);
       const p = w.project(v);
       el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
       el.style.display = p.visible && !this.bubbles.has(a) ? '' : 'none';
@@ -278,7 +278,7 @@ export class UI {
       const ag = sim.staffAgent(st.id);
       const status = hire ? '' : ag ? ({ cashier: '收銀中', toCounter: '前往收銀台', toStock: '去倉庫拿貨', grab: '拿貨中', toShelf: '搬貨中', stocking: '補貨中', toClean: '去打掃', cleaning: '打掃中', offduty: '下班中', arrive: '上班途中' }[ag.state] || '待命') : '休息中';
       return `<div class="card">
-        <div class="avatar" style="background:#${(st.role === 'manager' ? 0x1f4e79 : 0x2e6da4).toString(16)}">${st.role === 'manager' ? '長' : '員'}</div>
+        <div class="avatar" style="background-image:url(art/chars/${st.role === 'manager' ? 'manager' : (st.sprite || (st.id % 2 ? 'staff_f' : 'staff_m'))}.webp)"></div>
         <div class="card-main">
           <b>${esc(st.name)} <small>${st.role === 'manager' ? '店長' : '店員'}${hire ? '' : ` · Lv${st.lvl}`}</small></b>
           <small>收銀技巧 ${'★'.repeat(st.skill)}${'☆'.repeat(3 - st.skill)} · 速度 ${'★'.repeat(st.speed)}${'☆'.repeat(3 - st.speed)} · 日薪 ${money(st.wage)}</small>
@@ -384,6 +384,7 @@ export class UI {
     const face = a.sat >= 80 ? '😄' : a.sat >= 60 ? '🙂' : a.sat >= 40 ? '😐' : '😠';
     const st = { next: '逛逛中', toFixture: '找商品', browse: '挑選商品', queue: '排隊結帳', leave: '離開', enter: '進店' }[a.state] || a.state;
     return [`${a.name ? '💛 ' + a.name : T.name + '顧客'}`, `
+      ${a.sprite ? `<img class="char-portrait" src="art/chars/${a.sprite}.webp" alt="">` : ''}
       <div class="row"><span>類型</span><b>${T.name}${a.regular ? `（常客 · 第 ${a.regular.visits} 次來店）` : ''}</b></div>
       <div class="row"><span>狀態</span><b>${st}</b></div>
       <div class="row"><span>心情</span><b>${face} ${Math.round(Math.max(0, Math.min(100, a.sat)))}</b></div>

@@ -72,7 +72,7 @@ button { font: inherit; color: inherit; cursor: pointer; border: 0; background: 
 #assistant { position: fixed; left: calc(10px + var(--sal)); bottom: calc(96px + var(--sab)); z-index: 11; display: flex; align-items: flex-end; gap: 8px;
   max-width: min(360px, calc(100vw - 20px)); transform: translateY(20px); opacity: 0; pointer-events: none; transition: .3s; }
 #assistant.show { transform: none; opacity: 1; pointer-events: auto; }
-#assistant .ava { flex: none; width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg, #ffb6c1, #ff8a65); border: 3px solid #fff;
+#assistant .ava { flex: none; width: 60px; height: 60px; border-radius: 50%; background: url(art/chars/staff_f.webp) 50% 14% / 250% no-repeat, linear-gradient(135deg, #ffe0e6, #ffd0b5); border: 3px solid #fff;
   color: #fff; font-weight: 900; font-size: 22px; display: grid; place-items: center; box-shadow: 0 2px 10px rgba(0, 0, 0, .25); }
 #assistant p { margin: 0; background: #fff; border-radius: 14px 14px 14px 4px; padding: 9px 13px; font-size: 14px; line-height: 1.45; box-shadow: 0 2px 10px rgba(0, 0, 0, .2); }
 
@@ -131,7 +131,8 @@ body.sheet-open #sheet-backdrop { display: block; }
 .seg b { display: block; font-size: 14px; } .seg small { font-size: 11.5px; color: var(--muted); }
 .order-total { position: sticky; bottom: -16px; background: #fff; padding: 10px 0; display: flex; justify-content: flex-end; align-items: center; gap: 10px; font-size: 15px; border-top: 1px solid var(--line); }
 .card { display: flex; gap: 10px; align-items: center; padding: 10px; border-radius: 14px; background: #f6f9fc; margin-bottom: 8px; }
-.avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; color: #fff; display: grid; place-items: center; font-weight: 900; }
+.avatar { flex: none; width: 52px; height: 52px; border-radius: 50%; background-color: #dfe9f3; background-repeat: no-repeat; background-size: 250%; background-position: 50% 14%; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.15); }
+.char-portrait { float: right; height: 150px; margin: 0 0 6px 10px; filter: drop-shadow(0 3px 6px rgba(0,0,0,.2)); }
 .card-main { flex: 1; min-width: 0; } .card-main b { display: block; font-size: 14.5px; } .card-main small { display: block; font-size: 12px; color: var(--muted); }
 .card-act { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
 .card-act select { padding: 6px; border-radius: 10px; border: 1px solid var(--line); font: inherit; font-size: 12.5px; background: #fff; }
@@ -184,7 +185,7 @@ textarea#savecode { width: 100%; height: 70px; font-size: 11px; resize: vertical
   #menu button { width: 54px; height: 56px; font-size: 11.5px; }
   #menu button span { font-size: 20px; }
   #assistant { bottom: calc(80px + var(--sab)); max-width: calc(100vw - 70px); }
-  #assistant .ava { width: 42px; height: 42px; font-size: 18px; }
+  #assistant .ava { width: 48px; height: 48px; }
   #assistant p { font-size: 13px; }
 }
 @media (max-height: 520px) {

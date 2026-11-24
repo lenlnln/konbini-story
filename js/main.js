@@ -52,7 +52,7 @@ G.rotateCam = dir => {
 };
 G.resetCam = () => {
   const c = G.world.controls, b = G.world.storeBounds;
-  const k = (window.innerHeight > window.innerWidth ? 1.7 : 1) * (0.75 + b.W / 32);
+  const k = (window.innerHeight > window.innerWidth ? 1.85 : 1.1) * (0.8 + b.W / 32);
   c.target.set(b.W / 2, 0, (b.z0 + b.D) / 2 + 0.5);
   G.world.camera.position.set(b.W / 2 - 3 * k, 13 * k, (b.z0 + b.D) / 2 + 12 * k);
 };

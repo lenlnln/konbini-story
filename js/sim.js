@@ -1,7 +1,7 @@
 // 模擬：時間、顧客 AI、店員 AI、經濟
 import {
   MIN_PER_SEC, FIXTURES, PRODUCTS, PRODUCT, CUSTOMER_TYPES, HOUR_CURVE, STORE_LEVELS, STORE_FRONT_Z, DOOR_X,
-  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES,
+  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES, TYPE_SPRITES,
 } from './data.js';
 import { frontCells, backCells, DIRS, fixtureCells } from './path.js';
 import {
@@ -102,7 +102,7 @@ export class Sim {
     const side = Math.random() < 0.5 ? -1 : 1;
     const type = pick(Object.keys(CUSTOMER_TYPES));
     const T = CUSTOMER_TYPES[type];
-    const a = this.newAgent('passer', randomLook(), { shirt: pick(T.shirt), pants: pick(T.pants), scale: type === 'student' ? 0.92 : 1 });
+    const a = this.newAgent('passer', randomLook(), { sprite: pick(TYPE_SPRITES[type]), scale: rand(0.95, 1.03) });
     const [sx, sz] = this.edgePoint(side);
     this.setPos(a, sx, sz);
     a.speed = T.speed * rand(0.85, 1.1);
@@ -136,7 +136,9 @@ export class Sim {
     }
     const T = CUSTOMER_TYPES[type];
     const shirt = regular?.shirt ?? pick(T.shirt), pants = regular?.pants ?? pick(T.pants);
-    const a = this.newAgent('customer', look, { shirt, pants, scale: type === 'student' ? 0.9 : type === 'elder' ? 0.95 : 1 });
+    const sprite = regular?.sprite ?? pick(TYPE_SPRITES[type]);
+    const a = this.newAgent('customer', look, { sprite, scale: rand(0.95, 1.03) });
+    a.sprite = sprite;
     a.ctype = type; a.regular = regular; a.lookData = look; a.shirtColor = shirt; a.pantsColor = pants;
     const side = Math.random() < 0.5 ? -1 : 1;
     const [sx, sz] = this.edgePoint(side);
@@ -343,7 +345,7 @@ export class Sim {
         s.rating += (target - s.rating) * 0.08;
       }
       if (a.sat >= 80 && !a.regular && Math.random() < 0.06 && s.regulars.length < 30) {
-        const r = { name: randomName(), type: a.ctype, look: a.lookData, shirt: a.shirtColor, pants: a.pantsColor, visits: 1, since: this.day };
+        const r = { name: randomName(), type: a.ctype, look: a.lookData, sprite: a.sprite, visits: 1, since: this.day };
         a.name = r.name;
         s.regulars.push(r);
         this.ui.news('💛', `${r.name}（${CUSTOMER_TYPES[a.ctype].name}）很喜歡這家店，成為常客了！`);
@@ -426,7 +428,7 @@ export class Sim {
   }
   spawnStaff(st, initial) {
     const manager = st.role === 'manager';
-    const a = this.newAgent('staff', st.look, { shirt: manager ? 0xffffff : 0x2e6da4, pants: 0x263238, apron: manager ? 0x1f4e79 : 0xf6c344, cap: manager ? null : 0x2e6da4 });
+    const a = this.newAgent('staff', st.look, { sprite: manager ? 'manager' : (st.sprite || (st.id % 2 ? 'staff_f' : 'staff_m')) });
     a.sid = st.id; a.speed = 1.5 + st.speed * 0.2 + st.lvl * 0.05;
     if (initial) {
       const spots = [];
