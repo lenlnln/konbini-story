@@ -11,6 +11,7 @@ import {
   rand, randi, pick, weighted, randomName, randomLook, makeStaff, blankDay, owned, displayed, backroom,
   fixtureCount, consume, catProducts, fillFixture, save, carriedCats,
 } from './state.js';
+import { addOwnerXp, checkDailyQuests, makeDailyQuests } from './quests.js';
 
 let AID = 1;
 
@@ -398,7 +399,7 @@ export class Sim {
     // 附近有店員的話，有機會被當場發現
     const near = this.agents.find(x => x.kind === 'staff' && !['offduty', 'arrive', 'cashier'].includes(x.state) && Math.hypot(x.x - a.x, x.z - a.z) < 3.2);
     if (near && Math.random() < 0.45) a.catcher = near;
-    if (!this.s.prep) this.ui.assistant('🚨 有客人鬼鬼祟祟的，好像要偷東西！快按頭上的「喝止」！', 4);
+    if (!this.s.prep) this.ui.assistant('🚨 有客人鬼鬼祟祟的，好像要偷東西！快按頭上的「喝止」！', 4, true);
   }
   stopThief(a) {
     if (!this.agents.includes(a) || a.escaped || !['sneak', 'flee'].includes(a.state)) return false;
@@ -570,6 +571,7 @@ export class Sim {
       const cat = PRODUCT[pid].cat; s.today.byCat[cat] = (s.today.byCat[cat] || 0) + s.prices[pid];
     }
     s.cash += total; s.today.revenue += total; s.today.cogs += cogs; s.today.items += a.basket.length; s.today.customers++;
+    addOwnerXp(s, 1, this.ui); // 每服務一位客人，店長 +1 經驗
     s.stats.totalItems += a.basket.length; s.stats.totalCustomers++; s.stats.totalRevenue += total;
     if (a.wants.length === 0 && a.missed === 0) a.sat += 6;
     if (a.wait < 5) a.sat += 3;
@@ -859,6 +861,7 @@ export class Sim {
 
   // ───────── 時間事件 ─────────
   onHour(h) {
+    const T = this.s.today; (T.hourly || (T.hourly = []))[h] = T.revenue; // 營收趨勢：每小時記錄累計營收
     const was = this.isOpen((h + 23) % 24), now = this.isOpen(h);
     if (now && !was) { this.ui.news('🔑', '開門營業囉！'); this.ui.assistant('開店時間到了，今天也要加油！', 4); }
     if (!now && was) { this.ui.news('🌙', '打烊了，店裡的客人結完帳就會離開。'); }
@@ -912,6 +915,7 @@ export class Sim {
     const report = { day: endedDay, ...T, profit, avgSat, rating: s.rating, weather: s.weather, event: s.event };
     s.history.push({ day: endedDay, revenue: T.revenue, profit, customers: T.customers, sold: T.sold, wish: T.wish, rating: s.rating });
     if (s.history.length > 60) s.history.shift();
+    if (profit > 0) addOwnerXp(s, Math.round(profit / 200), this.ui);
     // 新的一天
     s.today = blankDay();
     const newDay = this.day;
@@ -925,6 +929,7 @@ export class Sim {
     }
     this.ui.news(WEATHERS[s.weather].icon, `第 ${newDay} 天（${season.name}季）天氣：${WEATHERS[s.weather].name}`);
     this.prepareDay(true);
+    s.daily = makeDailyQuests(s, newDay);
     if (s.dirt.length) { s.dirt = s.dirt.slice(0, 6); this.world.syncDirt(); }
     save(s);
     this.ui.showReport(report);
@@ -932,9 +937,11 @@ export class Sim {
 
   checkMissions() {
     const s = this.s;
+    checkDailyQuests(s, this.day, this.ui);
     const m = MISSIONS[s.missionIdx];
     if (m && m.check(s)) {
       s.cash += m.reward; s.missionIdx++;
+      addOwnerXp(s, Math.round(m.reward / 50), this.ui);
       this.ui.toast(`🎉 任務完成：${m.text}　獎勵 $${m.reward.toLocaleString()}`);
       this.ui.news('🏆', `任務完成「${m.text}」，獲得 $${m.reward.toLocaleString()}`);
       this.ui.assistant(pick(['太厲害了！繼續加油～', '店越來越有樣子了呢！', '客人們都很開心喔！']));

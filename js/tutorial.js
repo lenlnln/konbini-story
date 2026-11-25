@@ -143,6 +143,7 @@ export class Tutorial {
     G.ui.close();
     G.ui.news('🎉', `「${s.storeName}」正式開幕了！從街角小店開始，目標是成為連鎖企業。`);
     G.setSpeed(1);
+    G.sim.checkMissions(); // 立刻產生今日任務
     save(s);
     const tips = [
       [600, '開門囉！客人會自己進來挑商品、排隊結帳。點客人可以看他在想什麼喔！'],

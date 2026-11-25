@@ -24,7 +24,7 @@ G.sim.staffShifts(true);
 
 G.setSpeed = sp => {
   if (G.state.prep && sp > 0) { G.ui?.toast('還在開店準備中，準備好了就按「🏪 開始營業」'); sp = 0; }
-  G.speed = sp;
+  G.speed = sp; if (sp > 0) G.lastSpeed = sp;
   document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === sp));
 };
 G.pauseForReport = () => { G.prevSpeed = G.speed || 1; G.setSpeed(0); };

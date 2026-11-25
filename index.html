@@ -23,21 +23,20 @@
 <div id="overlay"></div>
 
 <header id="topbar">
-  <div class="brand"><span class="logo">日</span><div><b id="store-name">日日好商店</b><small id="v-open">營業中</small></div></div>
-  <div class="chip"><span class="ic">💰</span><div><small>現金</small><b id="v-cash">$0</b></div></div>
-  <div class="chip"><span class="ic">📈</span><div><small>今日營收</small><b id="v-rev" class="pos">$0</b></div></div>
-  <div class="chip"><span class="ic">👥</span><div><small>顧客數</small><b id="v-cust">0</b></div></div>
-  <div class="chip"><span class="ic">⭐</span><div><small>門市評價 <i id="v-rating-n">3.4</i></small><b id="v-rating" class="stars">★★★☆☆</b></div></div>
-  <div class="chip clock" id="clock-chip" title="營業時間"><span class="ic" id="v-weather">☀️</span><div><small id="v-day">第 1 天</small><b id="v-time">07:00</b></div></div>
-  <div class="speed">
-    <button data-speed="0" title="暫停">❚❚</button>
-    <button data-speed="1" title="×1">▶</button>
-    <button data-speed="2" title="×2">▶▶</button>
-    <button data-speed="3" title="×3">▶▶▶</button>
+  <div class="hp" id="player" title="店長資料">
+    <div class="face"></div>
+    <div class="pinfo"><div class="lv" id="v-lv">Lv.1</div><div class="nm"><span id="store-name">日日好商店</span><small id="v-open">營業中</small><b id="v-owner">店長</b></div>
+      <div class="xp"><i id="v-xpbar"></i><span id="v-xp">經驗值 0 / 80</span></div></div>
   </div>
+  <div class="hp st" id="st-cash"><span class="ic">💰</span><div><b class="big" id="v-cash">$0</b><small><span id="v-net" class="pos">+$0</span> <span class="est" title="估算：營收 − 進貨成本 − 損耗失竊 − 依今日已過時間攤提的薪資與租金">今日淨收益</span></small></div></div>
+  <div class="hp st" id="st-sat"><span class="ic">😊</span><div><small>顧客滿意度 <b id="v-sat">—</b></small><div class="hbar"><i id="v-satbar"></i></div></div></div>
+  <div class="hp st" id="st-cust"><span class="ic">👥</span><div><small>今日顧客數</small><b class="big"><span id="v-cust">0</span><em> 人</em> <span class="pos sm" id="v-inside"></span></b></div></div>
+  <div class="hp st" id="st-rate"><span class="ic">⭐</span><div><small>店鋪評價</small><b class="big"><span id="v-rating-n">3.4</span> <span id="v-rating" class="stars">★★★☆☆</span></b></div></div>
+  <div class="hp st" id="clock-box"><span class="ic big-ic" id="v-weather">☀️</span><div id="clock-chip" title="營業時間"><small id="v-day">第 1 天</small><b class="big" id="v-time">07:00</b></div>
+    <div class="tbtns"><button data-speed="0" id="btn-pause" title="暫停">⏸</button><button id="btn-gear" title="系統設定">⚙️</button></div></div>
 </header>
 
-<div id="mission"></div>
+<div id="mission" class="hp"></div>
 <div id="tutorial"></div>
 
 <div id="camtools">
@@ -48,23 +47,25 @@
 </div>
 
 <aside id="side">
-  <section><h3>🏪 門市資訊</h3><div id="side-info"></div></section>
-  <section><h3>📦 庫存狀態</h3><div id="side-inv"></div></section>
-  <section><h3>📰 最新消息</h3><div id="side-news"></div></section>
+  <section class="lt" id="sec-info"><h3>🏪 門市資訊</h3><div id="side-info"></div><div id="side-trend"></div></section>
+  <section class="lt" id="sec-inv"><h3>📦 庫存狀態</h3><div id="side-inv"></div></section>
+  <section class="lt" id="sec-news"><h3>📰 最新消息</h3><div id="side-news"></div></section>
 </aside>
 
-<div id="assistant"><div class="ava"></div><p id="assistant-text"></p></div>
+<div id="assistant" class="show"><div class="ava" title="助理小葵"></div><p id="assistant-text">店長好！今天也一起努力吧～</p></div>
 
 <nav id="menu">
-  <button data-panel="products"><span>🏷️</span>商品</button>
+  <button data-panel="products"><span>🛒</span>商品</button>
   <button data-panel="orders"><span>📦</span>進貨</button>
-  <button data-panel="build"><span>🛠️</span>擺設</button>
+  <button data-panel="build"><span>🗄️</span>擺設</button>
   <button data-panel="staff"><span>🧑‍💼</span>員工</button>
-  <button data-panel="report"><span>📊</span>報表</button>
-  <button data-panel="missions"><span>🏆</span>任務</button>
+  <button data-panel="report"><span>📊</span>營業報表</button>
+  <button data-panel="missions"><span>🏆</span>成就</button>
   <button data-panel="expand"><span>🏗️</span>擴張</button>
-  <button data-panel="system"><span>⚙️</span>系統</button>
+  <button data-panel="system"><span>⚙️</span>系統設定</button>
 </nav>
+
+<div class="hp speed" id="speed"><div class="sp-title">⏩ 遊戲速度</div><div class="sp-btns"><button data-speed="1">×1</button><button data-speed="2">×2</button><button data-speed="3">×3</button></div></div>
 
 <div id="buildbar"></div>
 

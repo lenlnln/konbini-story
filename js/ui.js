@@ -7,6 +7,7 @@ import {
 import { owned, displayed, backroom, fixtureCount, catProducts, fillFixture, save, exportCode, importCode, clearSave, newGame, pick, carriedCats } from './state.js';
 import { footprint } from './path.js';
 import { xpNeed } from './sim.js';
+import { ownerNeed, questText, questFmt, questPct } from './quests.js';
 
 const $ = (sel, el = document) => el.querySelector(sel);
 const money = n => (n < 0 ? '-$' : '$') + Math.abs(Math.round(n)).toLocaleString();
@@ -26,7 +27,7 @@ export class UI {
     this.orderQty = {};
     this.cat = 'drink';
     this.prodCat = 'drink';
-    this.assistantT = 0; this.warnT = 0;
+    this.assistantT = 0; this.warnT = 0; this.aQueue = [];
     this.bind();
     this.renderNews();
   }
@@ -34,18 +35,22 @@ export class UI {
   get sim() { return this.G.sim; }
 
   bind() {
-    document.querySelectorAll('[data-speed]').forEach(b => b.addEventListener('click', () => this.G.setSpeed(+b.dataset.speed)));
+    document.querySelectorAll('#speed [data-speed]').forEach(b => b.addEventListener('click', () => this.G.setSpeed(+b.dataset.speed)));
+    // 暫停鍵：再按一次回到原本的速度
+    $('#btn-pause').addEventListener('click', () => this.G.setSpeed(this.G.speed > 0 ? 0 : (this.G.lastSpeed || 1)));
+    $('#btn-gear').addEventListener('click', () => this.open('system'));
+    $('#player').addEventListener('click', () => this.open('missions'));
     document.querySelectorAll('#menu [data-panel]').forEach(b => b.addEventListener('click', () => this.open(b.dataset.panel)));
     $('#sheet-close').addEventListener('click', () => this.close());
     $('#sheet-backdrop').addEventListener('click', () => this.close());
     $('#side-toggle').addEventListener('click', () => document.body.classList.toggle('side-open'));
     $('#mission').addEventListener('click', () => this.open('missions'));
-    $('#assistant').addEventListener('click', () => this.assistant(pick(ASSISTANT_TIPS)));
+    $('#side-inv').addEventListener('click', e => { if (e.target.closest('[data-invall]')) { this.invAll = !this.invAll; this.renderSide(); } });
+    $('#assistant').addEventListener('click', () => { if (this.aQueue.length) this.nextAssistant(); else this.assistant(pick(ASSISTANT_TIPS), 8); });
     $('#rot-l').addEventListener('click', () => this.G.rotateCam(-1));
     $('#rot-r').addEventListener('click', () => this.G.rotateCam(1));
     $('#cam-reset').addEventListener('click', () => this.G.resetCam());
     $('#clock-chip').addEventListener('click', () => this.open('hours'));
-    $('#topbar .brand').addEventListener('click', () => this.open('hours'));
     this.sheetEl.addEventListener('click', e => this.onSheetClick(e));
     this.sheetEl.addEventListener('change', e => this.onSheetChange(e));
   }
@@ -54,20 +59,14 @@ export class UI {
   update(dt) {
     const s = this.s, sim = this.sim;
     const mod = s.t % 1440, day = Math.floor(s.t / 1440) + 1;
-    $('#v-cash').textContent = money(s.cash);
-    $('#v-rev').textContent = money(s.today.revenue);
-    $('#v-cust').textContent = s.today.customers;
-    $('#v-rating').textContent = stars(s.rating);
-    $('#v-rating-n').textContent = s.rating.toFixed(1);
-    $('#v-day').textContent = `第 ${day} 天`;
-    $('#v-time').textContent = `${pad(Math.floor(mod / 60))}:${pad(Math.floor(mod % 60))}`;
-    $('#v-weather').textContent = WEATHERS[s.weather].icon;
+    this.renderTop();
     $('#store-name').textContent = s.storeName;
     const open = sim.isOpen();
     if (this._open !== open || this._prep !== s.prep) { this._prep = s.prep; this._open = open; const el = $('#v-open'); el.textContent = s.prep ? '準備中' : open ? '營業中' : '休息中'; el.classList.toggle('closed', !open); this.G.world.setOpen?.(open); }
     // 門市資訊 / 庫存
-    this.sideT = (this.sideT || 0) - dt;
-    if (this.sideT <= 0) { this.sideT = 0.5; this.renderSide(); this.renderMission(); if (this.panel && this.livePanels.has(this.panel)) this.refreshPanel(); }
+    // 用實際時間計時（不受低幀率影響），每 0.5 秒重畫右側資訊與任務
+    const now = performance.now();
+    if (now - (this._sideAt || 0) >= 500) { this._sideAt = now; this.renderSide(); this.renderMission(); if (this.panel && this.livePanels.has(this.panel)) this.refreshPanel(); }
     this.updateBubbles(dt);
     this.updateCounterButtons();
     this.updateThiefButtons();
@@ -76,22 +75,52 @@ export class UI {
     // 小助手提醒
     this.warnT -= dt;
     if (this.warnT <= 0) { this.warnT = 25; this.checkWarnings(); }
-    this.assistantT -= dt;
-    if (this.assistantT <= 0 && $('#assistant').classList.contains('show')) { $('#assistant').classList.remove('show'); }
+    // 小助手訊息佇列：目前這句講完就換下一句，沒有新訊息就停在最後一句
+    this.assistantT -= Math.min(1, (now - (this._aAt || now)) / 1000); this._aAt = now; // 實際時間
+    if (this.assistantT <= 0 && this.aQueue.length) this.nextAssistant();
+    $('#assistant').classList.toggle('idle', this.assistantT <= 0);
   }
-  get livePanels() { return new Set(['staff', 'report', 'fixture', 'agent']); }
+  get livePanels() { return new Set(['staff', 'report', 'fixture', 'agent', 'missions']); }
 
+  // 上方 HUD：全部從遊戲狀態即時計算
+  renderTop() {
+    const s = this.s, T = s.today, sim = this.sim;
+    const mod = s.t % 1440, day = Math.floor(s.t / 1440) + 1;
+    const o = s.owner, need = ownerNeed(o.lvl);
+    $('#v-lv').textContent = `Lv.${o.lvl}`;
+    $('#v-owner').textContent = o.name;
+    $('#v-xp').textContent = `經驗值 ${Math.floor(o.xp)} / ${need}`;
+    $('#v-xpbar').style.width = Math.min(100, o.xp / need * 100) + '%';
+    $('#v-cash').textContent = money(s.cash);
+    const net = this.netToday();
+    const nEl = $('#v-net'); nEl.textContent = (net >= 0 ? '+' : '') + money(net); nEl.className = net >= 0 ? 'pos' : 'neg';
+    const sat = T.satN ? T.satSum / T.satN : null;
+    $('#v-sat').textContent = sat === null ? '—' : Math.round(sat) + '%';
+    $('#v-satbar').style.width = (sat || 0) + '%';
+    $('#v-cust').textContent = T.customers;
+    const inside = sim.agents.filter(a => a.kind === 'customer').length;
+    $('#v-inside').textContent = inside ? `店內 ${inside}` : '';
+    $('#v-rating').textContent = stars(s.rating);
+    $('#v-rating-n').textContent = s.rating.toFixed(1);
+    $('#v-day').textContent = `第 ${day} 天・${WEATHERS[s.weather].name}`;
+    $('#v-time').textContent = `${pad(Math.floor(mod / 60))}:${pad(Math.floor(mod % 60))}`;
+    $('#v-weather').textContent = WEATHERS[s.weather].icon;
+  }
+  // 今日淨收益（估）：營收 − 進貨成本 − 損耗/失竊 − 依今天已過時間攤提的薪資與租金
+  netToday() {
+    const s = this.s, T = s.today, frac = (s.t % 1440) / 1440;
+    const wages = s.staff.reduce((n, st) => n + this.sim.dayWage(st), 0);
+    return T.revenue - T.cogs - (T.waste || 0) - (T.stolen || 0) - (wages + STORE_LEVELS[s.level].rent) * frac;
+  }
   renderSide() {
-    const s = this.s, h = s.history.slice(-7);
-    const avgTicket = s.today.customers ? s.today.revenue / s.today.customers : 0;
+    const s = this.s, T = s.today;
+    const avgTicket = T.customers ? T.revenue / T.customers : 0;
     $('#side-info').innerHTML = `
-      <div class="row"><span>現金</span><b>${money(s.cash)}</b></div>
-      <div class="row"><span>今日營收</span><b class="pos">${money(s.today.revenue)}</b></div>
-      <div class="row"><span>客單價</span><b>${money(avgTicket)}</b></div>
-      <div class="row"><span>顧客滿意度</span><b>${s.today.satN ? Math.round(s.today.satSum / s.today.satN) + '%' : '-'}</b></div>${s.today.satN ? `<div class="bar sat"><i style="width:${Math.round(s.today.satSum / s.today.satN)}%"></i></div>` : ''}
-      <div class="row"><span>店內顧客</span><b>${this.sim.agents.filter(a => a.kind === 'customer').length} 人</b></div>
-      <div class="row"><span>常客</span><b>${s.regulars.length} 位</b></div>
-      ${h.length ? `<div class="spark">${h.map(x => `<i style="height:${Math.max(6, Math.min(100, x.revenue / Math.max(...h.map(y => y.revenue), 1) * 100))}%" title="第${x.day}天 ${money(x.revenue)}"></i>`).join('')}</div>` : ''}`;
+      <div class="kv"><span>今日營收</span><b class="pos">${money(T.revenue)}</b></div>
+      <div class="kv"><span>顧客流量</span><b>${T.customers} 人</b></div>
+      <div class="kv"><span>平均客單價</span><b>${money(avgTicket)}</b></div>
+`;
+    $('#side-trend').innerHTML = this.trendSvg();
     const rows = [];
     for (const [cat, c] of Object.entries(CATEGORIES)) {
       const fx = s.fixtures.filter(f => f.cat === cat && FIXTURES[f.type].cap);
@@ -100,13 +129,42 @@ export class UI {
       const shown = fx.reduce((n, f) => n + fixtureCount(f), 0);
       const back = catProducts(cat).reduce((n, p) => n + backroom(s, p.id), 0);
       const pct = shown / cap * 100;
-      rows.push(`<div class="inv"><span>${c.icon} ${c.name}</span><em>${shown} / ${cap}</em><div class="bar"><i style="width:${pct}%;background:${pct < 25 ? '#ef5350' : pct < 55 ? '#ffb300' : '#43a047'}"></i></div><small>倉庫 ${back}</small></div>`);
+      rows.push([pct, `<div class="sinv"><span class="ci">${c.icon}</span><div><div class="t"><span>${c.name}</span><span>${shown} / ${cap}</span></div><div class="bar" title="架上 ${shown}，倉庫 ${back}"><i style="width:${pct}%;background:${pct < 25 ? '#e5533d' : pct < 55 ? '#f2a425' : '#2fbf5b'}"></i></div></div></div>`]);
     }
-    $('#side-inv').innerHTML = rows.join('');
+    // 只列出最缺貨的 4 類，其餘收合成一行（點一下看全部）
+    rows.sort((a, b) => a[0] - b[0]);
+    const all = this.invAll || rows.length <= 5;
+    $('#side-inv').innerHTML = (rows.length ? (all ? rows : rows.slice(0, 4)).map(r => r[1]).join('') : '<div class="muted">還沒有擺放商品的設備</div>')
+      + (rows.length > 5 ? `<button class="inv-more" data-invall="1">${all ? '收合' : `還有 ${rows.length - 4} 類（庫存較足）▾`}</button>` : '');
   }
+  // 營收趨勢：近 7 日營收（含今天到目前為止）；第一天還沒有歷史時，改畫今天每小時的累計營收
+  trendSvg() {
+    const s = this.s, T = s.today, h = s.history.slice(-6);
+    let pts, label;
+    if (h.length) {
+      pts = [...h.map(x => ({ v: x.revenue, l: 'D' + x.day })), { v: T.revenue, l: '今' }];
+      label = `營收趨勢（近 ${pts.length} 日，今天到目前為止）`;
+    } else {
+      const hr = Math.floor((s.t % 1440) / 60), H = T.hourly || [];
+      pts = [];
+      for (let i = 0; i <= hr; i++) pts.push({ v: H[i] ?? (pts.length ? pts[pts.length - 1].v : 0), l: i + '時' });
+      pts[pts.length - 1] = { v: T.revenue, l: '現在' };
+      if (pts.length < 2) pts.unshift({ v: 0, l: '' });
+      label = '營收趨勢（今天每小時累計）';
+    }
+    const W = 216, H0 = 62, max = Math.max(1, ...pts.map(p => p.v));
+    const xy = pts.map((p, i) => [4 + i * (W - 8) / (pts.length - 1), H0 - 4 - p.v / max * (H0 - 12)]);
+    const line = xy.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+    const [lx, ly] = xy[xy.length - 1];
+    return `<div class="trend-l">${label}</div><svg class="trend" viewBox="0 0 ${W} ${H0}" preserveAspectRatio="none"><defs><linearGradient id="tg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2fbf5b" stop-opacity=".45"/><stop offset="1" stop-color="#2fbf5b" stop-opacity="0"/></linearGradient></defs>
+      <path d="${line} L${lx.toFixed(1)} ${H0} L4 ${H0}Z" fill="url(#tg)"/><path d="${line}" fill="none" stroke="#1f9d45" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="3.5" fill="#1f9d45"/></svg><div class="trend-x"><span>${pts[0].l}</span><b>${money(max)}</b><span>${pts[pts.length - 1].l}</span></div>`;
+  }
+  // 左側「任務目標」：今日任務（自動勾選），下面一行是目前的長期任務
   renderMission() {
-    const m = MISSIONS[this.s.missionIdx];
-    $('#mission').innerHTML = m ? `<b>🎯 任務</b><span>${esc(m.text)}</span><small>獎勵 ${money(m.reward)}</small>` : `<b>🏆 全部任務完成</b><span>你是便利商店大亨！</span>`;
+    const s = this.s, d = s.daily, m = MISSIONS[s.missionIdx];
+    const qs = d ? d.list.map(q => `<div class="q${q.done ? ' done' : ''}"><span class="cb${q.done ? ' ok' : ''}">${q.done ? '✓' : ''}</span><p>${esc(questText(q))}<i style="width:${questPct(s, q) * 100}%"></i></p><span class="pr">${questFmt(s, q)}</span></div>`).join('') : '<div class="muted">開始營業後就會有今日任務</div>';
+    $('#mission').innerHTML = `<h3>⭐ 任務目標</h3>${qs}<div class="q long"><span class="cb">🎯</span><p>${m ? esc(m.text) : '全部長期目標完成！'}</p><span class="pr">${m ? money(m.reward) : '🏆'}</span></div>`;
   }
   news(icon, text) {
     const s = this.s, day = Math.floor(s.t / 1440) + 1, mod = s.t % 1440;
@@ -115,17 +173,27 @@ export class UI {
     this.renderNews();
   }
   renderNews() {
-    $('#side-news').innerHTML = this.s.news.slice(0, 6).map(n => `<div class="news"><span>${n.icon}</span><p>${esc(n.text)}<small>${n.when}</small></p></div>`).join('') || '<div class="muted">還沒有消息</div>';
+    $('#side-news').innerHTML = this.s.news.slice(0, 4).map(n => `<div class="news"><span>${n.icon}</span><p>${esc(n.text)}<small>${n.when}</small></p></div>`).join('') || '<div class="muted">還沒有消息</div>';
   }
   toast(text) {
     const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
     $('#toasts').appendChild(t);
     setTimeout(() => t.classList.add('out'), 2600); setTimeout(() => t.remove(), 3200);
   }
-  assistant(text, dur = 6) {
-    $('#assistant-text').textContent = text;
+  // 小助手訊息：放進佇列依序顯示；urgent = 插到最前面
+  assistant(text, dur = 6, urgent = false) {
+    if (this.aQueue.some(m => m.text === text) || ($('#assistant-text').textContent === text && this.assistantT > 0)) return;
+    const msg = { text, dur };
+    if (urgent) this.aQueue.unshift(msg); else this.aQueue.push(msg);
+    if (this.aQueue.length > 5) this.aQueue.length = 5;
+    if (this.assistantT <= 0 || urgent) this.nextAssistant();
+  }
+  nextAssistant() {
+    const m = this.aQueue.shift(); if (!m) return;
+    const el = $('#assistant-text'); el.textContent = m.text;
+    el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
     $('#assistant').classList.add('show');
-    this.assistantT = dur;
+    this.assistantT = m.dur;
   }
   checkWarnings() {
     const s = this.s, sim = this.sim;
@@ -399,9 +467,23 @@ export class UI {
       <h4>最新消息</h4>${s.news.slice(0, 15).map(n => `<div class="news"><span>${n.icon}</span><p>${esc(n.text)}<small>${n.when}</small></p></div>`).join('')}`];
   }
   pMissions() {
-    const s = this.s;
-    return ['任務與成就', `<p class="hint">完成任務可以拿到獎金。最終目標：從街角小店成長為擁有 5 間分店的連鎖企業！</p>
-      ${MISSIONS.map((m, i) => `<div class="mission ${i < s.missionIdx ? 'done' : i === s.missionIdx ? 'cur' : ''}"><span>${i < s.missionIdx ? '✅' : i === s.missionIdx ? '🎯' : '🔒'}</span><p>${esc(m.text)}</p><b>${money(m.reward)}</b></div>`).join('')}`];
+    const s = this.s, o = s.owner, st = s.stats, d = s.daily;
+    const best = s.history.reduce((m, x) => Math.max(m, x.revenue), s.today.revenue);
+    return ['成就', `
+      <div class="card"><div class="avatar" style="background-image:url(art/faces/owner.webp)"></div><div class="card-main"><b>${esc(o.name)}・Lv.${o.lvl}</b><small>經驗值 ${Math.floor(o.xp)} / ${ownerNeed(o.lvl)}・服務客人、完成任務和每天的獲利都會累積經驗</small><div class="bar thin"><i style="width:${o.xp / ownerNeed(o.lvl) * 100}%"></i></div></div></div>
+      <div class="stats">
+        <div><small>累計顧客</small><b>${st.totalCustomers.toLocaleString()}</b></div>
+        <div><small>累計賣出</small><b>${st.totalItems.toLocaleString()}</b></div>
+        <div><small>累計營收</small><b>${money(st.totalRevenue)}</b></div>
+        <div><small>單日最高營收</small><b>${money(best)}</b></div>
+        <div><small>常客</small><b>${s.regulars.length}</b></div>
+        <div><small>營業天數</small><b>${s.history.length}</b></div>
+      </div>
+      <h4>今日任務</h4>
+      ${d ? d.list.map(q => `<div class="mission ${q.done ? 'done' : 'cur'}"><span>${q.done ? '✅' : '⬜'}</span><p>${esc(questText(q))}<br><small class="muted">${questFmt(s, q)}・+${q.xp} 經驗</small></p><b>${money(q.reward)}</b></div>`).join('') : '<div class="muted">開始營業後就會有今日任務</div>'}
+      <h4>長期目標</h4>
+      <p class="hint">完成長期目標可以拿到獎金。最終目標：從街角小店成長為擁有 5 間分店的連鎖企業！</p>
+      ${MISSIONS.map((m, i) => `<div class="mission ${i < s.missionIdx ? 'done' : i === s.missionIdx ? 'cur' : ''}"><span>${i < s.missionIdx ? '🏅' : i === s.missionIdx ? '🎯' : '🔒'}</span><p>${esc(m.text)}</p><b>${money(m.reward)}</b></div>`).join('')}`];
   }
   pExpand() {
     const s = this.s, next = STORE_LEVELS[s.level + 1], cur = STORE_LEVELS[s.level];
@@ -462,7 +544,7 @@ export class UI {
       <h4>安裝到手機</h4>
       <p class="hint">iPhone：用 Safari 開啟 → 分享 → 「加入主畫面」。<br>Android：Chrome 選單 → 「安裝應用程式 / 加到主畫面」。<br>安裝後就算沒有網路也能玩。</p>
       <div class="btnrow"><button class="btn danger" data-newgame="1">重新開始</button></div>
-      <p class="muted">便利商店物語 v0.4 · 原創作品</p>`];
+      <p class="muted">便利商店物語 v0.7 · 原創作品</p>`];
   }
   pFixture(fid) {
     const s = this.s, f = s.fixtures.find(x => x.id === fid);

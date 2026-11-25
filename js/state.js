@@ -49,6 +49,8 @@ export function newGame() {
     today: null, history: [],
     stats: { totalItems: 0, totalCustomers: 0, placed: 0, totalRevenue: 0 },
     missionIdx: 0,
+    owner: { name: '店長', lvl: 1, xp: 0 }, // 玩家（店長）等級
+    daily: null, // 今日任務
     news: [],
     weather: 'sunny', event: null, competitor: false,
     settings: { quality: 'high', shadows: true },
@@ -80,7 +82,7 @@ export function newGame() {
 }
 
 export function blankDay() {
-  return { revenue: 0, cogs: 0, customers: 0, items: 0, missed: 0, lost: 0, waste: 0, purchases: 0, wages: 0, rent: 0, branch: 0, byCat: {}, sold: {}, satSum: 0, satN: 0, stolen: 0, stolenN: 0, caught: 0 };
+  return { revenue: 0, cogs: 0, customers: 0, items: 0, missed: 0, lost: 0, waste: 0, purchases: 0, wages: 0, rent: 0, branch: 0, byCat: {}, sold: {}, satSum: 0, satN: 0, stolen: 0, stolenN: 0, caught: 0, hourly: [] };
 }
 
 // ── 庫存計算 ──
