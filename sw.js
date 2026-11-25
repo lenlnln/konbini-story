@@ -1,8 +1,8 @@
 // 離線快取：改版時請更新 VERSION
-const VERSION = 'konbini-v0.4.0';
+const VERSION = 'konbini-v0.5.0';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
-  './js/main.js', './js/data.js', './js/catalog.js', './js/state.js', './js/path.js', './js/world.js', './js/sim.js', './js/ui.js', './js/build.js',
+  './js/main.js', './js/data.js', './js/catalog.js', './js/state.js', './js/path.js', './js/world.js', './js/sim.js', './js/ui.js', './js/build.js', './js/tutorial.js',
   './vendor/three.module.min.js', './vendor/OrbitControls.js', './vendor/RoundedBoxGeometry.js', './vendor/RoomEnvironment.js',
   ...['staff_f', 'staff_m', 'manager', 'student_f', 'student_m', 'office_f', 'office_m', 'resident_f', 'resident_m', 'elder_f', 'elder_m', 'night_f', 'night_m'].flatMap(n => [`./art/chars/${n}.webp`, `./art/faces/${n}.webp`]),
   ...['p1', 'p2', 'p3', 'p4'].map(n => `./art/posters/${n}.webp`),

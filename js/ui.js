@@ -4,7 +4,7 @@ import {
   CATEGORIES, PRODUCTS, PRODUCT, FIXTURES, STORE_LEVELS, UPGRADES, DISTRICTS, BRANCH_COST, MISSIONS,
   WEATHERS, EVENTS, CUSTOMER_TYPES, ASSISTANT_TIPS, SEASONS,
 } from './data.js';
-import { owned, displayed, backroom, fixtureCount, catProducts, save, exportCode, importCode, clearSave, newGame, pick, carriedCats } from './state.js';
+import { owned, displayed, backroom, fixtureCount, catProducts, fillFixture, save, exportCode, importCode, clearSave, newGame, pick, carriedCats } from './state.js';
 import { footprint } from './path.js';
 import { xpNeed } from './sim.js';
 
@@ -64,7 +64,7 @@ export class UI {
     $('#v-weather').textContent = WEATHERS[s.weather].icon;
     $('#store-name').textContent = s.storeName;
     const open = sim.isOpen();
-    if (this._open !== open) { this._open = open; const el = $('#v-open'); el.textContent = open ? '營業中' : '休息中'; el.classList.toggle('closed', !open); this.G.world.setOpen?.(open); }
+    if (this._open !== open || this._prep !== s.prep) { this._prep = s.prep; this._open = open; const el = $('#v-open'); el.textContent = s.prep ? '準備中' : open ? '營業中' : '休息中'; el.classList.toggle('closed', !open); this.G.world.setOpen?.(open); }
     // 門市資訊 / 庫存
     this.sideT = (this.sideT || 0) - dt;
     if (this.sideT <= 0) { this.sideT = 0.5; this.renderSide(); this.renderMission(); if (this.panel && this.livePanels.has(this.panel)) this.refreshPanel(); }
@@ -125,6 +125,7 @@ export class UI {
   }
   checkWarnings() {
     const s = this.s, sim = this.sim;
+    if (s.prep) return;
     for (const [cat, c] of Object.entries(CATEGORIES)) {
       const fx = s.fixtures.filter(f => f.cat === cat && FIXTURES[f.type].cap);
       if (!fx.length) continue;
@@ -300,7 +301,7 @@ export class UI {
       const d = Math.floor(o.arrive / 1440) + 1, m = o.arrive % 1440;
       return `<div class="muted">🚚 ${n} 件 · 預計 第${d}天 ${pad(Math.floor(m / 60))}:${pad(m % 60)} 到貨（${o.supplier === 'cheap' ? '大盛批發' : '快捷物流'}）</div>`;
     }).join('');
-    return ['進貨', `
+    return ['進貨', `${s.prep ? '<p class="hint">🔑 開店準備中：現在下單，貨會<b>馬上送到倉庫</b>。</p>' : ''}
       <div class="seg">
         <button class="${this.supplier === 'cheap' ? 'on' : ''}" data-sup="cheap"><b>大盛批發</b><small>進價 9 折 · 明早 7:00 到貨</small></button>
         <button class="${this.supplier === 'fast' ? 'on' : ''}" data-sup="fast"><b>快捷物流</b><small>進價 +10%、運費 $150 · 2 小時到貨</small></button>
@@ -435,7 +436,8 @@ export class UI {
       html += `<h4>架上商品（${fixtureCount(f)} / ${def.cap}）</h4>`;
       const list = catProducts(f.cat).filter(p => f.stock[p.id] || backroom(s, p.id));
       html += list.map(p => `<div class="row"><span>${p.name}</span><b>${f.stock[p.id] || 0} <small>倉庫 ${backroom(s, p.id)}</small></b></div>`).join('') || '<div class="muted">這一類目前沒有庫存，去進貨吧！</div>';
-      html += `<div class="btnrow"><button class="btn" data-goorder="${f.cat}">去進貨</button></div>`;
+      html += `<div class="btnrow">${s.prep ? `<button class="btn primary" data-shelve="${f.id}">🧺 從倉庫上架</button>` : ''}<button class="btn" data-goorder="${f.cat}">去進貨</button></div>`;
+      if (!s.prep) html += '<p class="hint">店員有空時會自動從倉庫補貨上架。</p>';
     }
     if (f.type === 'counter') {
       const q = this.sim.queues.get(f.id) || [];
@@ -512,9 +514,69 @@ export class UI {
       if (!Object.keys(this.orderQty).length) this.toast('庫存都很充足，不用補貨');
     }
     else if (d.gocatalog) { this.open('catalog'); return; }
+    else if (d.shelve) { const f = s.fixtures.find(x => x.id === +d.shelve); if (f) { const n = fillFixture(s, f, 1); this.G.world.updateFixtureStock(f); this.toast(n ? `上架了 ${n} 件` : '倉庫沒有這一類的貨了，先去進貨吧'); } }
     else if (d.unlock) {
       const r = sim.unlockCat(d.unlock);
       if (r.ok) { this.toast(`引進了「${CATEGORIES[d.unlock].name}」！`); this.prodCat = d.unlock; this.cat = d.unlock; } else this.toast(r.msg);
+    }
+    else if (d.order) {
+      const r = sim.placeOrder({ ...this.orderQty }, this.supplier);
+      if (r.ok) { this.orderQty = {}; this.toast(`已下單 ${money(r.cost)}，${s.prep ? '已經送到倉庫' : this.supplier === 'cheap' ? '明早 7:00 到貨' : '2 小時後到貨'}`); }
+      else this.toast(`現金不足（需要 ${money(r.cost)}）`);
+    }
+    else if (d.hire) {
+      const st = s.candidates.find(x => x.id === +d.hire);
+      if (st) {
+        if (st.role === 'manager' && s.staff.some(x => x.role === 'manager')) { this.toast('已經有店長了'); return; }
+        s.candidates = s.candidates.filter(x => x !== st); s.staff.push(st);
+        this.news('🤝', `${st.name} 加入了團隊！`); sim.staffShifts();
+      }
+    }
+    else if (d.fire) {
+      const st = s.staff.find(x => x.id === +d.fire);
+      if (st && confirmInline(b, '確定解雇？')) { s.staff = s.staff.filter(x => x !== st); this.news('👋', `${st.name} 離開了團隊。`); sim.staffShifts(); }
+      else return;
+    }
+    else if (d.expand) {
+      const next = STORE_LEVELS[s.level + 1];
+      if (!next) return;
+      if (s.cash < next.cost) { this.toast('現金不足'); return; }
+      s.cash -= next.cost; s.level++;
+      this.G.rebuildStore();
+      this.news('🏗️', `店面擴建完成！升級為「${next.name}」。`);
+      this.toast(`🎉 升級為「${next.name}」！`);
+      this.close(); return;
+    }
+    else if (d.upg) {
+      const u = UPGRADES[d.upg], lv = s.upgrades[d.upg], cost = u.levels[lv + 1];
+      if (!cost) return; if (s.cash < cost) { this.toast('現金不足'); return; }
+      s.cash -= cost; s.upgrades[d.upg]++;
+      this.G.rebuildStore();
+      this.news('✨', `${u.name}升級為「${u.desc[lv + 1]}」！`);
+    }
+    else if (d.branch) {
+      if (s.cash < BRANCH_COST) { this.toast('現金不足'); return; }
+      s.cash -= BRANCH_COST;
+      const n = s.branches.length + 1;
+      s.branches.push({ district: d.branch, name: `${s.storeName} ${DISTRICTS[d.branch].name}${n}號店`, opened: Math.floor(s.t / 1440) + 1 });
+      this.news('🎊', `第 ${n} 間分店在${DISTRICTS[d.branch].name}開幕了！`);
+      this.toast('🎊 分店開幕！');
+    }
+    else if (d.rename) {
+      const v = $('#in-name').value.trim(); if (!v) return;
+      s.storeName = v.slice(0, 8); this.G.rebuildStore(); this.toast('店名已更改');
+    }
+    else if (d.q) { s.settings.quality = d.q; this.G.world.applyQuality(); this.G.onResize(); }
+    else if (d.shadow) { s.settings.shadows = !s.settings.shadows; this.G.world.applyQuality(); }
+    else if (d.savenow) { this.toast(save(s) ? '已存檔' : '存檔失敗'); }
+    else if (d.export) {
+      const code = exportCode(s); const ta = $('#savecode'); ta.value = code; ta.select();
+      navigator.clipboard?.writeText(code).then(() => this.toast('存檔碼已複製'), () => this.toast('請手動複製下方存檔碼'));
+      return;
+    }
+    else if (d.import) {
+      try { const ns = importCode($('#savecode').value); this.G.loadState(ns); this.toast('讀取成功'); this.close(); } catch (err) { this.toast('存檔碼格式不正確'); }
+      return;
     }
     else if (d.newgame) { if (confirmInline(b, '確定要刪除進度重新開始？')) { clearSave(); this.G.loadState(newGame()); this.close(); } return; }
     else if (d.lockedcat) { this.toast(`還沒引進「${CATEGORIES[d.fcat].name}」，到「商品」→「引進新品類」`); return; }

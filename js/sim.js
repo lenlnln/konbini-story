@@ -649,8 +649,10 @@ export class Sim {
     cost = Math.round(cost + (supplier === 'fast' ? 150 : 0));
     if (cost > s.cash) return { ok: false, cost };
     s.cash -= cost; s.today.purchases += cost;
-    const arrive = supplier === 'fast' ? s.t + 120 : (Math.floor(s.t / 1440) + 1) * 1440 + 7 * 60;
+    // 開店準備期間下的單，批發商馬上送到
+    const arrive = s.prep ? s.t : supplier === 'fast' ? s.t + 120 : (Math.floor(s.t / 1440) + 1) * 1440 + 7 * 60;
     s.orders.push({ id: s.nextId++, arrive, items, supplier });
+    if (s.prep) { this.checkDeliveries(); if (this.G.tutorial) this.G.tutorial.flags.ordered = true; }
     return { ok: true, cost, arrive };
   }
   checkDeliveries() {
@@ -688,7 +690,8 @@ export class Sim {
     const sales = p => (hist.reduce((n, h) => n + (h.sold?.[p.id] || 0), 0) + (s.today.sold[p.id] || 0)) / (hist.length + 1);
     const perish = ps.filter(p => p.life !== Infinity).length > ps.length / 2;
     const sold = ps.map(sales), totalSold = sold.reduce((a, b) => a + b, 0);
-    const target = perish ? Math.max(cap * 1.2, totalSold * 1.15) : Math.max(cap * 1.8, totalSold * 3);
+    const boost = s.prep ? 1.5 : 1; // 開店前多囤一點
+    const target = (perish ? Math.max(cap * 1.2, totalSold * 1.15) : Math.max(cap * 1.8, totalSold * 3)) * boost;
     const w = sold.map(x => 1 + x * 4), sw = w.reduce((a, b) => a + b, 0);
     const items = {};
     ps.forEach((p, i) => {

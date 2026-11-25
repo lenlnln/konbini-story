@@ -211,3 +211,31 @@ body.building #camtools { bottom: calc(190px + var(--sab)); top: auto; left: aut
 .catcard.have { opacity: .75; }
 .tag { display: inline-block; padding: 4px 10px; border-radius: 12px; background: #eef2f6; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .tag.ok { background: #e8f5e9; color: var(--good); }
+
+/* v0.5 開店準備教學 */
+#tutorial { display: none; }
+body.prep #tutorial { display: block; position: fixed; left: calc(8px + var(--sal)); top: calc(70px + var(--sat)); z-index: 12; width: min(340px, calc(100vw - 16px));
+  background: #fff; border-radius: 16px; padding: 10px 14px 12px; box-shadow: 0 6px 24px rgba(0, 0, 0, .25); border: 3px solid var(--yellow); }
+body.prep #mission { display: none; }
+body.prep .speed button:not([data-speed="0"]) { opacity: .35; }
+body.prep.sheet-open #tutorial, body.prep.building #tutorial { top: calc(4px + var(--sat)) !important; max-height: 30vh; overflow: auto; z-index: 40; padding: 6px 10px 8px; }
+body.prep.sheet-open #tutorial .tut-btns, body.prep.building #tutorial .tut-btns { display: none; }
+body.prep.sheet-open #tutorial p, body.prep.building #tutorial p { font-size: 12px; }
+#tutorial.pop { animation: tutpop .35s ease; }
+@keyframes tutpop { 0% { transform: scale(.92); opacity: .4; } 100% { transform: scale(1); opacity: 1; } }
+.tut-head { display: flex; justify-content: space-between; align-items: center; }
+.tut-head b { font-size: 12px; color: var(--navy); }
+.tut-x { font-size: 11px; color: var(--muted); background: none; text-decoration: underline; }
+#tutorial h4 { margin: 4px 0 2px; font-size: 16px; color: var(--ink); }
+#tutorial p { margin: 0 0 8px; font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+#tutorial p b { color: #c25e00; }
+.tut-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.tut-btns .btn.ghost { background: #eef2f6; }
+.tut-prog { position: relative; height: 18px; border-radius: 9px; background: #eef2f6; overflow: hidden; margin-bottom: 8px; }
+.tut-prog i { position: absolute; inset: 0 auto 0 0; background: #8bd18f; }
+.tut-prog span { position: relative; font-size: 11px; font-weight: 700; padding-left: 8px; line-height: 18px; }
+.tut-hl { animation: tuthl 1.1s ease-in-out infinite; position: relative; z-index: 11; }
+@keyframes tuthl { 0%, 100% { box-shadow: 0 0 0 0 rgba(246, 195, 68, .9); } 50% { box-shadow: 0 0 0 7px rgba(246, 195, 68, .0), 0 0 14px 4px rgba(246, 195, 68, .9); } }
+@media (max-width: 700px) { body.prep #tutorial { top: calc(96px + var(--sat)); } }
+@media (max-height: 520px) { body.prep #tutorial { top: calc(60px + var(--sat)); width: min(320px, 46vw); padding: 8px 10px; } #tutorial p { font-size: 12px; } }
+body.prep #assistant { display: none !important; }

@@ -39,7 +39,8 @@ export function newGame() {
     unlocked: Object.keys(CATEGORIES).filter(c => CATEGORIES[c].start), // 已引進的商品類別
     storeName: '日日好商店',
     hours: { open: 0, close: 24 }, // 營業時間（open = close 視為 24 小時）
-    cash: 50000, t: 7 * 60, level: 0,
+    cash: 50000, t: 6 * 60 + 30, level: 0,
+    prep: true, // 開店準備（教學）中，還沒營業
     upgrades: { sign: 0, light: 0, floor: 0 },
     fixtures: [], inventory: {}, prices: {}, orders: [],
     staff: [], candidates: [], candidatesDay: 0,
@@ -69,10 +70,9 @@ export function newGame() {
   for (const cat of carriedCats(s)) {
     const cap = s.fixtures.filter(f => f.cat === cat).reduce((n, f) => n + (FIXTURES[f.type].cap || 0), 0);
     const ps = CAT_PRODUCTS[cat], perish = ps[0].life !== Infinity;
-    const per = Math.max(1, Math.ceil(cap * (perish ? 1.4 : 3.5) / ps.length));
+    const per = Math.max(1, Math.ceil(cap * (perish ? 1.0 : 1.1) / ps.length)); // 大約剛好擺滿架子，倉庫要靠開店前進貨
     for (const p of ps) s.inventory[p.id].push({ q: per, exp: p.life === Infinity ? 99999 : p.life });
   }
-  for (const f of s.fixtures) fillFixture(s, f, 0.85);
   s.staff.push(makeStaff(s.nextId++, 'clerk', { name: '林小葵', shift: 'all', skill: 2, speed: 2 }));
   s.staff[0].sprite = 'staff_f';
   s.staff[0].wage = 900;
@@ -153,6 +153,7 @@ function migrateV2(s) {
 }
 export function migrate(s) {
   if ((s.version || 1) < 2) migrateV2(s);
+  if (s.prep === undefined) s.prep = false; // 舊存檔已經在營業了
   const fresh = newGame();
   for (const k in fresh) if (s[k] === undefined) s[k] = fresh[k];
   for (const p of PRODUCTS) { if (!s.inventory[p.id]) s.inventory[p.id] = []; if (!s.prices[p.id]) s.prices[p.id] = p.ref; }

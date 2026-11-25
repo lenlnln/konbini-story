@@ -4,6 +4,7 @@ import { Grid } from './path.js';
 import { Sim } from './sim.js';
 import { UI } from './ui.js';
 import { Build } from './build.js';
+import { Tutorial } from './tutorial.js';
 import { newGame, load, save, clearSave, serialize } from './state.js';
 
 const canvas = document.getElementById('scene');
@@ -22,6 +23,7 @@ G.build = new Build(G);
 G.sim.staffShifts(true);
 
 G.setSpeed = sp => {
+  if (G.state.prep && sp > 0) { G.ui?.toast('還在開店準備中，準備好了就按「🏪 開始營業」'); sp = 0; }
   G.speed = sp;
   document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('on', +b.dataset.speed === sp));
 };
@@ -107,7 +109,8 @@ function frame(now) {
   } else {
     for (const a of G.sim.agents) G.world.animatePerson(a.obj, false, dt);
   }
-  missionT += dt; if (missionT > 1) { missionT = 0; G.sim.checkMissions(); }
+  missionT += dt; if (missionT > 1) { missionT = 0; if (!G.state.prep) G.sim.checkMissions(); }
+  G.tutorial.update();
   if (camAnim) {
     camAnim.t = Math.min(1, camAnim.t + dt * 2.5);
     const k = camAnim.t < 0.5 ? 2 * camAnim.t * camAnim.t : 1 - Math.pow(-2 * camAnim.t + 2, 2) / 2;
@@ -128,19 +131,13 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) save(
 window.addEventListener('pagehide', () => save(G.state));
 
 // 開場
-if (isNew) {
-  G.ui.news('🎉', `「${state.storeName}」開幕了！從街角小店開始，目標是成為連鎖企業。`);
-  const tips = [
-    [800, '店長你好！我是助理小葵。這是我們的小店，客人會自己進來挑商品、排隊結帳喔！'],
-    [8000, '單指拖曳移動鏡頭，兩指可以旋轉和縮放。也可以用右上角的 ⟲ ⟳ 轉視角。'],
-    [16000, '點顧客可以看他在想什麼；點貨架可以看庫存。商品賣完記得從「進貨」叫貨！'],
-    [24000, '想改變店裡的配置，就到「擺設」自由擺放貨架、冰箱和收銀台吧！'],
-  ];
-  for (const [ms, t] of tips) setTimeout(() => G.ui.assistant(t, 7), ms);
+G.tutorial = new Tutorial(G);
+if (G.state.prep) {
+  setTimeout(() => G.ui.assistant('店長你好！我是助理小葵。開店前，我們先一起把店準備好吧！', 7), 800);
 } else {
   setTimeout(() => G.ui.assistant('歡迎回來！今天也一起努力吧～', 4), 600);
+  G.setSpeed(1);
 }
-G.setSpeed(1);
 G.world.syncDirt();
 
 // 離線支援
