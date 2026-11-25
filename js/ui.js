@@ -4,7 +4,7 @@ import {
   CATEGORIES, PRODUCTS, PRODUCT, FIXTURES, STORE_LEVELS, UPGRADES, DISTRICTS, BRANCH_COST, MISSIONS,
   WEATHERS, EVENTS, CUSTOMER_TYPES, ASSISTANT_TIPS, SEASONS,
 } from './data.js';
-import { owned, displayed, backroom, fixtureCount, catProducts, save, exportCode, importCode, clearSave, newGame, pick } from './state.js';
+import { owned, displayed, backroom, fixtureCount, catProducts, save, exportCode, importCode, clearSave, newGame, pick, carriedCats } from './state.js';
 import { footprint } from './path.js';
 import { xpNeed } from './sim.js';
 
@@ -76,7 +76,7 @@ export class UI {
     this.assistantT -= dt;
     if (this.assistantT <= 0 && $('#assistant').classList.contains('show')) { $('#assistant').classList.remove('show'); }
   }
-  get livePanels() { return new Set(['staff', 'report', 'orders', 'fixture', 'agent']); }
+  get livePanels() { return new Set(['staff', 'report', 'fixture', 'agent']); }
 
   renderSide() {
     const s = this.s, h = s.history.slice(-7);
@@ -217,7 +217,7 @@ export class UI {
     if (this.reportOpen) { this.reportOpen = false; this.G.resumeAfterReport(); }
   }
   refreshPanel() {
-    const fn = { products: this.pProducts, orders: this.pOrders, staff: this.pStaff, report: this.pReport, missions: this.pMissions, expand: this.pExpand, system: this.pSystem, hours: this.pHours, fixture: this.pFixture, agent: this.pAgent, daily: this.pDaily }[this.panel];
+    const fn = { products: this.pProducts, orders: this.pOrders, staff: this.pStaff, report: this.pReport, missions: this.pMissions, expand: this.pExpand, system: this.pSystem, hours: this.pHours, catalog: this.pCatalog, fixture: this.pFixture, agent: this.pAgent, daily: this.pDaily }[this.panel];
     if (!fn) return;
     const body = $('#sheet-body');
     const keep = body.scrollTop;
@@ -225,15 +225,21 @@ export class UI {
     if ((focused || body.querySelector('[data-armed]')) && this.livePanels.has(this.panel)) return;
     const [title, html] = fn.call(this, this.panelArg);
     $('#sheet-title').textContent = title;
+    if (this._lastHtml === html && body.childElementCount) return; // 內容沒變就不重畫，避免按鈕按不到
+    this._lastHtml = html;
     body.innerHTML = html;
     body.scrollTop = keep;
   }
-  catTabs(cur, attr) {
-    return `<div class="tabs">${Object.entries(CATEGORIES).map(([k, c]) => `<button class="${k === cur ? 'on' : ''}" data-${attr}="${k}">${c.icon} ${c.name}</button>`).join('')}</div>`;
+  catTabs(cur, attr, list = this.s.unlocked) {
+    return `<div class="tabs scroll">${list.map(k => { const c = CATEGORIES[k]; return `<button class="${k === cur ? 'on' : ''}" data-${attr}="${k}">${c.icon} ${c.name}</button>`; }).join('')}</div>`;
   }
 
   pProducts() {
-    const s = this.s, cat = this.prodCat;
+    const s = this.s;
+    if (!s.unlocked.includes(this.prodCat)) this.prodCat = s.unlocked[0];
+    const cat = this.prodCat;
+    const lockedN = Object.keys(CATEGORIES).filter(c => !s.unlocked.includes(c)).length;
+    const carried = carriedCats(s).includes(cat);
     const rows = catProducts(cat).map(p => {
       const price = s.prices[p.id], r = price / p.ref;
       const tag = r < 0.95 ? '<em class="good">便宜</em>' : r > 1.15 ? '<em class="bad">偏貴</em>' : '<em>合理</em>';
@@ -242,12 +248,42 @@ export class UI {
         <div class="stepper"><button data-price="${p.id}" data-d="-5">－</button><span>${money(price)} ${tag}</span><button data-price="${p.id}" data-d="5">＋</button></div>
       </div>`;
     }).join('');
+    const C = CATEGORIES[cat];
     return ['商品與定價', `<p class="hint">售價越低顧客越願意買、也越開心；售價高利潤多，但價格敏感的客人（學生、長者）會放棄購買。</p>
-      ${this.catTabs(cat, 'pcat')}${rows}
+      <div class="btnrow"><button class="btn primary" data-gocatalog="1">📦 引進新品類${lockedN ? `（還有 ${lockedN} 類）` : ''}</button></div>
+      ${this.catTabs(cat, 'pcat')}
+      <p class="muted">${C.no}・${C.icon} ${C.name}：${catProducts(cat).length} 項商品・擺在${[...new Set(C.fix)].map(t => FIXTURES[t].name).join('、')}${carried ? '' : '<br>⚠️ 目前店裡沒有設備擺這一類，客人買不到。到「擺設」放一台，或點設備切換類別。'}</p>
+      ${rows}
       <div class="btnrow"><button class="btn" data-allprice="1">全部恢復市價</button><button class="btn" data-allprice="0.9">全部九折</button><button class="btn" data-allprice="1.1">全部加價 10%</button></div>`];
   }
+  pCatalog() {
+    const s = this.s;
+    const card = k => {
+      const c = CATEGORIES[k], [cost, lvl] = c.unlock, have = s.unlocked.includes(k);
+      const where = [...new Set(c.fix)].map(t => FIXTURES[t].name).join('、');
+      const sample = catProducts(k).slice(0, 6).map(p => p.name).join('、');
+      const wish = s.history.slice(-3).reduce((n, h) => n + (h.wish?.[k] || 0), 0) + (s.today.wish?.[k] || 0);
+      let btn;
+      if (have) btn = '<span class="tag ok">✓ 已引進</span>';
+      else if (s.level < lvl) btn = `<span class="tag">🔒 需「${STORE_LEVELS[lvl].name}」</span>`;
+      else btn = `<button class="btn ${s.cash >= cost ? 'primary' : ''}" data-unlock="${k}">引進 ${money(cost)}</button>`;
+      return `<div class="item catcard ${have ? 'have' : ''}">
+        <div class="item-main"><b>${c.no}・${c.icon} ${c.name}<small class="count">${catProducts(k).length} 項</small></b>
+        <small>${sample}…</small>
+        <small>擺放：${where}${c.adult ? '・未成年不販售' : ''}${c.service ? '・不用進貨' : ''}${wish ? `・<em class="bad">最近有 ${wish} 位客人想買</em>` : ''}</small></div>
+        <div>${btn}</div></div>`;
+    };
+    const keys = Object.keys(CATEGORIES);
+    const locked = keys.filter(k => !s.unlocked.includes(k)), have = keys.filter(k => s.unlocked.includes(k));
+    return ['引進新品類', `<p class="hint">引進後還要有對應的設備擺放，客人才買得到。品類越多，能吸引的客群越廣，但也要更多架位和進貨資金。</p>
+      ${locked.length ? `<h4>可以引進</h4>${locked.map(card).join('')}` : '<p class="hint">🎉 所有品類都引進了！</p>'}
+      <h4>已引進（${have.length}）</h4>${have.map(card).join('')}`];
+  }
   pOrders() {
-    const s = this.s, cat = this.cat;
+    const s = this.s;
+    const ocats = s.unlocked.filter(c => !CATEGORIES[c].service);
+    if (!ocats.includes(this.cat)) this.cat = ocats[0];
+    const cat = this.cat;
     const mult = this.supplier === 'cheap' ? 0.9 : 1.1;
     let total = 0;
     for (const pid in this.orderQty) total += PRODUCT[pid].cost * this.orderQty[pid] * mult;
@@ -256,7 +292,7 @@ export class UI {
       const q = this.orderQty[p.id] || 0;
       return `<div class="item">
         <div class="item-main"><b>${p.name}</b><small>進價 ${money(Math.round(p.cost * mult))} · 架上 ${displayed(s, p.id)} · 倉庫 ${backroom(s, p.id)} · 昨日賣出 ${s.history.at(-1)?.sold?.[p.id] || 0}${p.life !== Infinity ? ` · ⏳${p.life}天` : ''}</small></div>
-        <div class="stepper"><button data-oq="${p.id}" data-d="-5">－</button><span>${q}</span><button data-oq="${p.id}" data-d="5">＋5</button><button data-oq="${p.id}" data-d="20">＋20</button></div>
+        <div class="stepper"><button data-oq="${p.id}" data-d="-1">－</button><span>${q}</span><button data-oq="${p.id}" data-d="1">＋</button><button data-oq="${p.id}" data-d="5">＋5</button></div>
       </div>`;
     }).join('');
     const pending = s.orders.map(o => {
@@ -269,8 +305,8 @@ export class UI {
         <button class="${this.supplier === 'cheap' ? 'on' : ''}" data-sup="cheap"><b>大盛批發</b><small>進價 9 折 · 明早 7:00 到貨</small></button>
         <button class="${this.supplier === 'fast' ? 'on' : ''}" data-sup="fast"><b>快捷物流</b><small>進價 +10%、運費 $150 · 2 小時到貨</small></button>
       </div>
-      ${this.catTabs(cat, 'ocat')}${rows}
-      <div class="btnrow"><button class="btn" data-autofill="1">一鍵補足庫存</button><button class="btn" data-oclear="1">清空</button></div>
+      <div class="btnrow"><button class="btn primary" data-autofill="all">一鍵補足全部庫存</button><button class="btn" data-autofill="cat">只補這一類</button><button class="btn" data-oclear="1">清空</button></div>
+      ${this.catTabs(cat, 'ocat', ocats)}${rows}
       <div class="order-total">合計 <b>${money(total)}</b>　<button class="btn primary" data-order="1" ${total <= 0 ? 'disabled' : ''}>下單</button></div>
       ${pending ? `<h4>運送中</h4>${pending}` : ''}
       ${s.staff.some(x => x.role === 'manager') ? '<p class="hint">📋 已有店長：每天 22:00 會依銷量自動叫貨。</p>' : '<p class="hint">💡 雇用店長後，每天晚上會自動幫你叫貨。</p>'}`];
@@ -384,17 +420,21 @@ export class UI {
       <h4>安裝到手機</h4>
       <p class="hint">iPhone：用 Safari 開啟 → 分享 → 「加入主畫面」。<br>Android：Chrome 選單 → 「安裝應用程式 / 加到主畫面」。<br>安裝後就算沒有網路也能玩。</p>
       <div class="btnrow"><button class="btn danger" data-newgame="1">重新開始</button></div>
-      <p class="muted">便利商店物語 v0.3 · 原創作品</p>`];
+      <p class="muted">便利商店物語 v0.4 · 原創作品</p>`];
   }
   pFixture(fid) {
     const s = this.s, f = s.fixtures.find(x => x.id === fid);
     if (!f) { return ['設備', '<div class="muted">設備已移除</div>']; }
     const def = FIXTURES[f.type];
     let html = `<p class="hint">${def.desc}</p>`;
-    if (def.cats) {
-      if (def.cats.length > 1) html += `<h4>擺放類別</h4><div class="tabs">${def.cats.map(c => `<button class="${f.cat === c ? 'on' : ''}" data-fcat="${c}">${CATEGORIES[c].icon} ${CATEGORIES[c].name}</button>`).join('')}</div>`;
+    if (def.service) {
+      const list = catProducts('service').filter(p => p.at === def.service);
+      html += s.unlocked.includes('service') ? `<h4>提供的服務</h4>` + list.map(p => `<div class="row"><span>${p.name}</span><b>${money(s.prices[p.id])}</b></div>`).join('') : '<p class="hint">🔒 要先在「商品」引進「服務票券」才會開始營業。</p>';
+    } else if (def.cats) {
+      if (def.cats.length > 1) html += `<h4>擺放類別</h4><div class="tabs scroll">${def.cats.map(c => { const ok = s.unlocked.includes(c); return `<button class="${f.cat === c ? 'on' : ''} ${ok ? '' : 'locked'}" data-fcat="${c}" ${ok ? '' : 'data-lockedcat="1"'}>${ok ? '' : '🔒'}${CATEGORIES[c].icon} ${CATEGORIES[c].name}</button>`; }).join('')}</div>`;
       html += `<h4>架上商品（${fixtureCount(f)} / ${def.cap}）</h4>`;
-      html += catProducts(f.cat).map(p => `<div class="row"><span>${p.name}</span><b>${f.stock[p.id] || 0} <small>倉庫 ${backroom(s, p.id)}</small></b></div>`).join('');
+      const list = catProducts(f.cat).filter(p => f.stock[p.id] || backroom(s, p.id));
+      html += list.map(p => `<div class="row"><span>${p.name}</span><b>${f.stock[p.id] || 0} <small>倉庫 ${backroom(s, p.id)}</small></b></div>`).join('') || '<div class="muted">這一類目前沒有庫存，去進貨吧！</div>';
       html += `<div class="btnrow"><button class="btn" data-goorder="${f.cat}">去進貨</button></div>`;
     }
     if (f.type === 'counter') {
@@ -439,6 +479,7 @@ export class UI {
       <div class="row"><span>門市評價</span><b>${stars(s.rating)} ${s.rating.toFixed(1)}</b></div>
       <div class="row"><span>缺貨次數 / 等太久離開</span><b>${r.missed} / ${r.lost}</b></div>
       ${r.full ? `<div class="row"><span>店裡太擠、沒進來的客人</span><b>${r.full}</b></div>` : ''}
+      ${r.wish && Object.keys(r.wish).length ? `<h4>顧客想買、但店裡沒賣</h4>${Object.entries(r.wish).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([c, n]) => `<div class="row"><span>${CATEGORIES[c].icon} ${CATEGORIES[c].name}</span><b>${n} 人</b></div>`).join('')}<p class="hint">💡 到「商品」→「引進新品類」，再放一台對應的設備就能賺到這些生意。</p>` : ''}
       <h4>明天</h4>
       <div class="row"><span>天氣</span><b>${WEATHERS[s.weather].icon} ${WEATHERS[s.weather].name}</b></div>
       ${ev ? `<div class="row"><span>活動</span><b>📣 ${ev.name}</b></div>` : ''}
@@ -465,74 +506,18 @@ export class UI {
     else if (d.oq) { this.orderQty[d.oq] = Math.max(0, (this.orderQty[d.oq] || 0) + +d.d); if (!this.orderQty[d.oq]) delete this.orderQty[d.oq]; }
     else if (d.oclear) { this.orderQty = {}; }
     else if (d.autofill) {
-      for (const p of PRODUCTS) {
-        if (!s.fixtures.some(f => f.cat === p.cat)) continue;
-        const pend = s.orders.reduce((n, o) => n + (o.items[p.id] || 0), 0);
-        const target = p.life === Infinity ? 40 : 12;
-        const need = target - owned(s, p.id) - pend;
-        if (need > 0) this.orderQty[p.id] = Math.ceil(need / 5) * 5; else delete this.orderQty[p.id];
-      }
+      const cats = d.autofill === 'cat' ? [this.cat] : carriedCats(s);
+      if (d.autofill === 'all') this.orderQty = {};
+      for (const c of cats) { for (const p of catProducts(c)) delete this.orderQty[p.id]; Object.assign(this.orderQty, sim.planOrder(c)); }
+      if (!Object.keys(this.orderQty).length) this.toast('庫存都很充足，不用補貨');
     }
-    else if (d.order) {
-      const r = sim.placeOrder({ ...this.orderQty }, this.supplier);
-      if (r.ok) { this.orderQty = {}; this.toast(`已下單 ${money(r.cost)}，${this.supplier === 'cheap' ? '明早 7:00' : '2 小時後'}到貨`); }
-      else this.toast(`現金不足（需要 ${money(r.cost)}）`);
-    }
-    else if (d.hire) {
-      const st = s.candidates.find(x => x.id === +d.hire);
-      if (st) {
-        if (st.role === 'manager' && s.staff.some(x => x.role === 'manager')) { this.toast('已經有店長了'); return; }
-        s.candidates = s.candidates.filter(x => x !== st); s.staff.push(st);
-        this.news('🤝', `${st.name} 加入了團隊！`); sim.staffShifts();
-      }
-    }
-    else if (d.fire) {
-      const st = s.staff.find(x => x.id === +d.fire);
-      if (st && confirmInline(b, '確定解雇？')) { s.staff = s.staff.filter(x => x !== st); this.news('👋', `${st.name} 離開了團隊。`); sim.staffShifts(); }
-      else return;
-    }
-    else if (d.expand) {
-      const next = STORE_LEVELS[s.level + 1];
-      if (!next) return;
-      if (s.cash < next.cost) { this.toast('現金不足'); return; }
-      s.cash -= next.cost; s.level++;
-      this.G.rebuildStore();
-      this.news('🏗️', `店面擴建完成！升級為「${next.name}」。`);
-      this.toast(`🎉 升級為「${next.name}」！`);
-      this.close(); return;
-    }
-    else if (d.upg) {
-      const u = UPGRADES[d.upg], lv = s.upgrades[d.upg], cost = u.levels[lv + 1];
-      if (!cost) return; if (s.cash < cost) { this.toast('現金不足'); return; }
-      s.cash -= cost; s.upgrades[d.upg]++;
-      this.G.rebuildStore();
-      this.news('✨', `${u.name}升級為「${u.desc[lv + 1]}」！`);
-    }
-    else if (d.branch) {
-      if (s.cash < BRANCH_COST) { this.toast('現金不足'); return; }
-      s.cash -= BRANCH_COST;
-      const n = s.branches.length + 1;
-      s.branches.push({ district: d.branch, name: `${s.storeName} ${DISTRICTS[d.branch].name}${n}號店`, opened: Math.floor(s.t / 1440) + 1 });
-      this.news('🎊', `第 ${n} 間分店在${DISTRICTS[d.branch].name}開幕了！`);
-      this.toast('🎊 分店開幕！');
-    }
-    else if (d.rename) {
-      const v = $('#in-name').value.trim(); if (!v) return;
-      s.storeName = v.slice(0, 8); this.G.rebuildStore(); this.toast('店名已更改');
-    }
-    else if (d.q) { s.settings.quality = d.q; this.G.world.applyQuality(); this.G.onResize(); }
-    else if (d.shadow) { s.settings.shadows = !s.settings.shadows; this.G.world.applyQuality(); }
-    else if (d.savenow) { this.toast(save(s) ? '已存檔' : '存檔失敗'); }
-    else if (d.export) {
-      const code = exportCode(s); const ta = $('#savecode'); ta.value = code; ta.select();
-      navigator.clipboard?.writeText(code).then(() => this.toast('存檔碼已複製'), () => this.toast('請手動複製下方存檔碼'));
-      return;
-    }
-    else if (d.import) {
-      try { const ns = importCode($('#savecode').value); this.G.loadState(ns); this.toast('讀取成功'); this.close(); } catch (err) { this.toast('存檔碼格式不正確'); }
-      return;
+    else if (d.gocatalog) { this.open('catalog'); return; }
+    else if (d.unlock) {
+      const r = sim.unlockCat(d.unlock);
+      if (r.ok) { this.toast(`引進了「${CATEGORIES[d.unlock].name}」！`); this.prodCat = d.unlock; this.cat = d.unlock; } else this.toast(r.msg);
     }
     else if (d.newgame) { if (confirmInline(b, '確定要刪除進度重新開始？')) { clearSave(); this.G.loadState(newGame()); this.close(); } return; }
+    else if (d.lockedcat) { this.toast(`還沒引進「${CATEGORIES[d.fcat].name}」，到「商品」→「引進新品類」`); return; }
     else if (d.fcat) {
       const f = s.fixtures.find(x => x.id === this.panelArg);
       if (f && f.cat !== d.fcat) { f.cat = d.fcat; f.stock = {}; this.G.world.updateFixtureStock(f); }

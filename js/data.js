@@ -1,63 +1,35 @@
 // 遊戲靜態資料：商品、設備、顧客類型、店面等級、任務
 export const MIN_PER_SEC = 4; // ×1 速度下，每 1 秒現實時間 = 4 分鐘遊戲時間
 
-export const CATEGORIES = {
-  drink:  { name: '飲料',   icon: '🥤', color: 0x3aa0ff },
-  noodle: { name: '泡麵',   icon: '🍜', color: 0xff7a3a },
-  snack:  { name: '零食',   icon: '🍪', color: 0xffc23a },
-  daily:  { name: '日用品', icon: '🧻', color: 0x7ad0a0 },
-  fresh:  { name: '鮮食',   icon: '🍙', color: 0xf05a7a },
-  hot:    { name: '熱食',   icon: '🍢', color: 0xd9822b },
-  coffee: { name: '咖啡',   icon: '☕', color: 0x8a5a3a },
-};
-
-// life: 保存天數（Infinity = 不會過期）
-export const PRODUCTS = [
-  { id: 'water',   cat: 'drink',  name: '礦泉水',     cost: 8,  ref: 20,  life: Infinity, color: 0x9fd8ff },
-  { id: 'greentea',cat: 'drink',  name: '無糖綠茶',   cost: 12, ref: 25,  life: Infinity, color: 0x7ccf6a },
-  { id: 'soda',    cat: 'drink',  name: '氣泡汽水',   cost: 15, ref: 30,  life: Infinity, color: 0xe53b3b },
-  { id: 'milktea', cat: 'drink',  name: '鮮奶茶',     cost: 18, ref: 35,  life: Infinity, color: 0xd8b48a },
-  { id: 'sports',  cat: 'drink',  name: '運動飲料',   cost: 16, ref: 30,  life: Infinity, color: 0x4a7dff },
-  { id: 'beefnd',  cat: 'noodle', name: '紅燒牛肉麵', cost: 22, ref: 45,  life: Infinity, color: 0xc0392b },
-  { id: 'ramen',   cat: 'noodle', name: '豚骨拉麵杯', cost: 25, ref: 49,  life: Infinity, color: 0xf3e2c0 },
-  { id: 'yakisoba',cat: 'noodle', name: '醬燒炒麵',   cost: 18, ref: 39,  life: Infinity, color: 0x6b3e1e },
-  { id: 'chips',   cat: 'snack',  name: '洋芋片',     cost: 20, ref: 39,  life: Infinity, color: 0xffd23a },
-  { id: 'choco',   cat: 'snack',  name: '巧克力棒',   cost: 18, ref: 35,  life: Infinity, color: 0x5a3018 },
-  { id: 'cookie',  cat: 'snack',  name: '奶油餅乾',   cost: 15, ref: 29,  life: Infinity, color: 0xe8b25a },
-  { id: 'gummy',   cat: 'snack',  name: '水果軟糖',   cost: 12, ref: 25,  life: Infinity, color: 0xff6fb5 },
-  { id: 'tissue',  cat: 'daily',  name: '抽取衛生紙', cost: 40, ref: 79,  life: Infinity, color: 0xf2f2f2 },
-  { id: 'brush',   cat: 'daily',  name: '牙刷組',     cost: 15, ref: 35,  life: Infinity, color: 0x46c3c3 },
-  { id: 'battery', cat: 'daily',  name: '電池',       cost: 30, ref: 69,  life: Infinity, color: 0x333333 },
-  { id: 'umbrella',cat: 'daily',  name: '透明雨傘',   cost: 60, ref: 129, life: Infinity, color: 0xcfe8ff },
-  { id: 'onigiri', cat: 'fresh',  name: '鮪魚飯糰',   cost: 15, ref: 32,  life: 2, color: 0xffffff },
-  { id: 'bento',   cat: 'fresh',  name: '排骨便當',   cost: 40, ref: 79,  life: 1, color: 0xb5651d },
-  { id: 'sandw',   cat: 'fresh',  name: '火腿三明治', cost: 20, ref: 45,  life: 2, color: 0xf5deb3 },
-  { id: 'oden',    cat: 'hot',    name: '關東煮',     cost: 10, ref: 25,  life: 1, color: 0xe0c070 },
-  { id: 'egg',     cat: 'hot',    name: '茶葉蛋',     cost: 6,  ref: 13,  life: 2, color: 0x7a5230 },
-  { id: 'hotdog',  cat: 'hot',    name: '烤熱狗堡',   cost: 20, ref: 45,  life: 1, color: 0xd2691e },
-  { id: 'americano',cat:'coffee', name: '美式咖啡',   cost: 12, ref: 45,  life: 4, color: 0x3b2314 },
-  { id: 'latte',   cat: 'coffee', name: '拿鐵',       cost: 18, ref: 55,  life: 4, color: 0xc8a27a },
-];
-export const PRODUCT = Object.fromEntries(PRODUCTS.map(p => [p.id, p]));
+// 商品目錄在 catalog.js（26 大類、近 800 項商品）
+export { CATEGORIES, PRODUCTS, PRODUCT, CAT_PRODUCTS, CAT_AVG, LEGACY_IDS, LEGACY_CATS, findProduct } from './catalog.js';
+import { CATEGORIES as _CATS } from './catalog.js';
+const catsFor = type => Object.keys(_CATS).filter(c => _CATS[c].fix.includes(type));
 
 // 設備：w×d 為旋轉 0 時佔用格數，面向 +z
 export const FIXTURES = {
-  shelf:   { name: '商品貨架', icon: '🗄️', w: 2, d: 1, price: 3000, cap: 24, cats: ['snack', 'noodle', 'daily'], defCat: 'snack', desc: '可擺零食、泡麵或日用品' },
-  fridge:  { name: '飲料冰箱', icon: '🧊', w: 2, d: 1, price: 6000, cap: 30, cats: ['drink'], desc: '冷藏飲料' },
-  chiller: { name: '鮮食冷藏櫃', icon: '🍱', w: 2, d: 1, price: 7000, cap: 16, cats: ['fresh'], desc: '飯糰、便當、三明治（會過期）' },
-  hotcase: { name: '熱食櫃', icon: '🍢', w: 1, d: 1, price: 5000, cap: 12, cats: ['hot'], desc: '關東煮、茶葉蛋（會過期）' },
-  coffee:  { name: '咖啡機', icon: '☕', w: 1, d: 1, price: 8000, cap: 20, cats: ['coffee'], desc: '現煮咖啡，上班族最愛' },
+  shelf:   { name: '商品貨架', icon: '🗄️', w: 2, d: 1, price: 3000, cap: 24, cats: catsFor('shelf'), defCat: 'snack', desc: '常溫商品：零食、泡麵、麵包、日用品、文具、3C…' },
+  fridge:  { name: '飲料冰箱', icon: '🧊', w: 2, d: 1, price: 6000, cap: 30, cats: catsFor('fridge'), desc: '冷藏飲料、乳品、酒類' },
+  chiller: { name: '鮮食冷藏櫃', icon: '🍱', w: 2, d: 1, price: 7000, cap: 16, cats: catsFor('chiller'), desc: '飯糰、便當、麵食、輕食、甜點（會過期）' },
+  freezer: { name: '冷凍櫃', icon: '🍦', w: 2, d: 1, price: 6500, cap: 20, cats: catsFor('freezer'), defCat: 'dessert', desc: '冰淇淋、冰品、冷凍食材' },
+  hotcase: { name: '熱食保溫櫃', icon: '🍗', w: 1, d: 1, price: 5000, cap: 12, cats: catsFor('hotcase'), defCat: 'oden', desc: '炸物、烤物、關東煮、滷味、湯品（會過期）' },
+  odenpot: { name: '關東煮鍋', icon: '🍢', w: 1, d: 1, price: 4500, cap: 16, cats: catsFor('odenpot'), desc: '關東煮、滷味、湯品（會過期）' },
+  steamer: { name: '蒸包機', icon: '🥟', w: 1, d: 1, price: 4500, cap: 12, cats: catsFor('steamer'), desc: '包子、饅頭、蒸地瓜（會過期）' },
+  coffee:  { name: '咖啡機', icon: '☕', w: 1, d: 1, price: 8000, cap: 20, cats: catsFor('coffee'), desc: '現煮咖啡與熱飲，上班族最愛' },
+  tobacco: { name: '菸品櫃', icon: '🚬', w: 1, d: 1, price: 3500, cap: 18, cats: catsFor('tobacco'), desc: '菸品、打火機（未成年不販售）' },
+  kiosk:   { name: '多功能事務機', icon: '🖨️', w: 1, d: 1, price: 12000, service: 'kiosk', cats: ['service'], desc: '影印、繳費、寄件、票券（不用進貨）' },
+  atm:     { name: 'ATM 提款機', icon: '🏧', w: 1, d: 1, price: 15000, service: 'atm', cats: ['service'], desc: '提款、轉帳手續費收入' },
   counter: { name: '收銀台', icon: '🧾', w: 2, d: 1, price: 4000, checkout: true, desc: '顧客在前方排隊、店員在後方結帳' },
   plant:   { name: '盆栽', icon: '🪴', w: 1, d: 1, price: 600, decor: 2, desc: '讓店裡更舒服（滿意度＋）' },
   table:   { name: '用餐桌椅', icon: '🪑', w: 1, d: 1, price: 1500, decor: 3, desc: '內用區（滿意度＋）' },
 };
 
 export const CUSTOMER_TYPES = {
-  student:  { name: '學生',   budget: 120, sens: 1.5, basket: [1, 2], speed: 1.9, prefs: { snack: 3, drink: 3, noodle: 2, hot: 2, fresh: 1 }, peaks: [7, 12, 16, 17], shirt: [0xffffff, 0xe8f0ff], pants: [0x2a3a6a, 0x3a3a3a] },
-  office:   { name: '上班族', budget: 320, sens: 0.8, basket: [1, 3], speed: 1.7, prefs: { coffee: 3, fresh: 3, drink: 2, hot: 1, snack: 1 }, peaks: [7, 8, 12, 13, 18, 19], shirt: [0x2b2f3a, 0x3d4a5c, 0xf4f4f4], pants: [0x222222, 0x2d2d3d] },
-  resident: { name: '居民',   budget: 420, sens: 1.1, basket: [2, 5], speed: 1.5, prefs: { daily: 3, drink: 2, snack: 2, noodle: 2, fresh: 1 }, peaks: [10, 11, 15, 16, 20], shirt: [0xff9e80, 0x9be3a0, 0xffe08a, 0xb39ddb], pants: [0x5d4037, 0x37474f, 0x8d6e63] },
-  elder:    { name: '長者',   budget: 160, sens: 1.3, basket: [1, 2], speed: 1.1, prefs: { hot: 3, daily: 2, fresh: 2, drink: 1 }, peaks: [6, 7, 8, 9, 10], shirt: [0x8d6e63, 0x90a4ae, 0xa1887f], pants: [0x424242, 0x5d4037] },
-  night:    { name: '夜貓族', budget: 220, sens: 0.9, basket: [1, 3], speed: 1.6, prefs: { noodle: 3, snack: 2, drink: 3, hot: 1 }, peaks: [21, 22, 23, 0, 1, 2], shirt: [0x212121, 0x4a148c, 0x263238], pants: [0x111111, 0x1a237e] },
+  student:  { name: '學生',   budget: 120, sens: 1.5, basket: [1, 2], speed: 1.9, peaks: [7, 12, 16, 17], shirt: [0xffffff, 0xe8f0ff], pants: [0x2a3a6a, 0x3a3a3a] },
+  office:   { name: '上班族', budget: 320, sens: 0.8, basket: [1, 3], speed: 1.7, peaks: [7, 8, 12, 13, 18, 19], shirt: [0x2b2f3a, 0x3d4a5c, 0xf4f4f4], pants: [0x222222, 0x2d2d3d] },
+  resident: { name: '居民',   budget: 420, sens: 1.1, basket: [2, 5], speed: 1.5, peaks: [10, 11, 15, 16, 20], shirt: [0xff9e80, 0x9be3a0, 0xffe08a, 0xb39ddb], pants: [0x5d4037, 0x37474f, 0x8d6e63] },
+  elder:    { name: '長者',   budget: 160, sens: 1.3, basket: [1, 2], speed: 1.1, peaks: [6, 7, 8, 9, 10], shirt: [0x8d6e63, 0x90a4ae, 0xa1887f], pants: [0x424242, 0x5d4037] },
+  night:    { name: '夜貓族', budget: 220, sens: 0.9, basket: [1, 3], speed: 1.6, peaks: [21, 22, 23, 0, 1, 2], shirt: [0x212121, 0x4a148c, 0x263238], pants: [0x111111, 0x1a237e] },
 };
 
 // 每小時人潮基準
@@ -88,9 +60,9 @@ export const BRANCH_COST = 250000;
 export const WEATHERS = {
   sunny:  { name: '晴天', icon: '☀️', traffic: 1.0,  demand: {} },
   cloudy: { name: '多雲', icon: '⛅', traffic: 1.0,  demand: {} },
-  rain:   { name: '下雨', icon: '🌧️', traffic: 0.8,  demand: { daily: 1.5, hot: 1.4, noodle: 1.3 }, umbrella: true },
-  hot:    { name: '炎熱', icon: '🔥', traffic: 1.1,  demand: { drink: 2.0, coffee: 0.8, hot: 0.5 } },
-  cold:   { name: '寒流', icon: '❄️', traffic: 0.9,  demand: { hot: 2.0, coffee: 1.5, noodle: 1.5, drink: 0.6 } },
+  rain:   { name: '下雨', icon: '🌧️', traffic: 0.8,  demand: { living: 2.5, oden: 1.4, soup: 1.4, instant: 1.3 }, umbrella: true },
+  hot:    { name: '炎熱', icon: '🔥', traffic: 1.1,  demand: { drink: 2.0, dessert: 2.0, alcohol: 1.4, brew: 0.8, oden: 0.5, soup: 0.5, steam: 0.6 } },
+  cold:   { name: '寒流', icon: '❄️', traffic: 0.9,  demand: { oden: 2.0, soup: 2.0, steam: 1.8, braise: 1.4, brew: 1.5, instant: 1.5, drink: 0.6, dessert: 0.5 } },
 };
 export const SEASONS = [
   { name: '春', w: { sunny: 4, cloudy: 3, rain: 3 } },
@@ -100,10 +72,10 @@ export const SEASONS = [
 ];
 
 export const EVENTS = [
-  { id: 'sports', name: '附近學校運動會', news: '附近學校舉辦運動會，學生會特別多！', traffic: 1.25, typeBoost: { student: 3 }, demand: { drink: 1.8, snack: 1.3 } },
-  { id: 'concert', name: '演唱會散場', news: '體育館有演唱會，晚上散場人潮湧現！', traffic: 1.15, typeBoost: { night: 3 }, demand: { drink: 1.4, hot: 1.3 }, hours: [20, 21, 22, 23] },
-  { id: 'typhoon', name: '颱風來襲', news: '颱風警報！大家搶購泡麵和飲料。', traffic: 0.75, typeBoost: { resident: 2 }, demand: { noodle: 3, drink: 1.8, daily: 1.5 } },
-  { id: 'market', name: '早市活動', news: '巷口早市開張，早上長輩人潮多。', traffic: 1.15, typeBoost: { elder: 3 }, demand: { hot: 1.5 }, hours: [6, 7, 8, 9, 10] },
+  { id: 'sports', name: '附近學校運動會', news: '附近學校舉辦運動會，學生會特別多！', traffic: 1.25, typeBoost: { student: 3 }, demand: { drink: 1.8, snack: 1.3, fried: 1.3, stationery: 1.5 } },
+  { id: 'concert', name: '演唱會散場', news: '體育館有演唱會，晚上散場人潮湧現！', traffic: 1.15, typeBoost: { night: 3 }, demand: { drink: 1.4, alcohol: 1.8, fried: 1.3, oden: 1.3 }, hours: [20, 21, 22, 23] },
+  { id: 'typhoon', name: '颱風來襲', news: '颱風警報！大家搶購泡麵和飲料。', traffic: 0.75, typeBoost: { resident: 2 }, demand: { instant: 3, drink: 1.8, daily: 1.5, living: 1.5, grocery: 1.8, condiment: 1.5 } },
+  { id: 'market', name: '早市活動', news: '巷口早市開張，早上長輩人潮多。', traffic: 1.15, typeBoost: { elder: 3 }, demand: { steam: 1.5, oden: 1.3, grocery: 1.5 }, hours: [6, 7, 8, 9, 10] },
   { id: 'sale', name: '競爭店大特價', news: '對街超市今天全面八折，客人可能被吸走…', traffic: 0.8, typeBoost: {}, demand: {}, competitor: true },
 ];
 
@@ -112,6 +84,7 @@ export const MISSIONS = [
   { id: 'rev5k', text: '單日營收達到 $5,000', reward: 2000, check: s => s.today.revenue >= 5000 },
   { id: 'hire', text: '再雇用一位員工', reward: 2000, check: s => s.staff.length >= 2 },
   { id: 'place', text: '購買並擺放一台新設備', reward: 1500, check: s => s.stats.placed >= 1 },
+  { id: 'newCat', text: '引進一個新的商品類別', reward: 2000, check: s => (s.unlocked?.length || 0) > 10 },
   { id: 'rating4', text: '門市評價達到 4.0 星', reward: 5000, check: s => s.rating >= 4.0 && s.stats.totalCustomers >= 40 },
   { id: 'cust150', text: '單日顧客達到 150 人', reward: 5000, check: s => s.today.customers >= 150 },
   { id: 'regular5', text: '擁有 5 位常客', reward: 4000, check: s => s.regulars.length >= 5 },
@@ -140,10 +113,12 @@ export const ASSISTANT_TIPS = [
   '點兩下地板之外的空白處拖曳可以移動鏡頭，兩指可以旋轉和縮放喔！',
   '貨架空了顧客會失望，記得進貨，店員會自動補貨。',
   '排隊太久會降低滿意度，人多的時候多請一位店員吧！',
-  '鮮食和熱食會過期，進貨量要抓剛好。',
+  '鮮食和熱食會過期，進貨量要抓剛好。按「一鍵補足」會依銷量分配。',
   '價格比市價低一點能讓顧客開心，但利潤會變少。',
   '滿意度高的客人可能變成常客，常客會一直回來光顧！',
-  '下雨天雨傘和熱食賣得特別好。',
+  '下雨天雨傘和關東煮賣得特別好，炎熱天冰品和飲料大賣。',
+  '在「商品」裡可以引進新的商品類別，像炸物、甜點、3C 配件，客群會更廣。',
+  '客人說「沒有賣…嗎？」代表有需求，看看日報裡的「顧客想買」吧！',
   '雇用店長後，每天晚上會自動幫你叫貨。',
 ];
 

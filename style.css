@@ -201,3 +201,13 @@ textarea#savecode { width: 100%; height: 70px; font-size: 11px; resize: vertical
 }
 
 body.building #camtools { bottom: calc(190px + var(--sab)); top: auto; left: auto; right: calc(8px + var(--sar)); }
+
+/* v0.4 商品目錄 */
+.tabs.scroll { position: sticky; top: -2px; z-index: 2; background: #fff; }
+.tabs button.locked { opacity: .5; }
+.bitem.locked { opacity: .55; } .bitem.locked small { color: var(--muted); }
+.catcard .item-main small { display: block; }
+.catcard .count { display: inline; margin-left: 6px; font-weight: 400; color: var(--muted); font-size: 12px; }
+.catcard.have { opacity: .75; }
+.tag { display: inline-block; padding: 4px 10px; border-radius: 12px; background: #eef2f6; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.tag.ok { background: #e8f5e9; color: var(--good); }

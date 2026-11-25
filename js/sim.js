@@ -1,12 +1,12 @@
 // 模擬：時間、顧客 AI、店員 AI、經濟
 import {
   MIN_PER_SEC, FIXTURES, PRODUCTS, PRODUCT, CUSTOMER_TYPES, HOUR_CURVE, STORE_LEVELS, STORE_FRONT_Z, DOOR_X,
-  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES, TYPE_SPRITES,
+  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES, TYPE_SPRITES, CAT_AVG,
 } from './data.js';
 import { frontCells, backCells, DIRS, fixtureCells } from './path.js';
 import {
   rand, randi, pick, weighted, randomName, randomLook, makeStaff, blankDay, owned, displayed, backroom,
-  fixtureCount, consume, catProducts, fillFixture, save,
+  fixtureCount, consume, catProducts, fillFixture, save, carriedCats,
 } from './state.js';
 
 let AID = 1;
@@ -41,7 +41,7 @@ export class Sim {
     if (this.day !== this.lastDay) { const ended = this.lastDay; this.lastDay = this.day; this.endDay(ended); }
     this.spawn(simDt);
     this.decideAcc += simDt;
-    if (this.decideAcc > 0.4) { this.decideAcc = 0; this.staffShifts(); for (const a of this.agents) if (a.kind === 'staff' && a.state === 'idle') this.staffDecide(a); }
+    if (this.decideAcc > 0.4) { this.decideAcc = 0; this.urgent = this.needUrgentRestock(); this.staffShifts(); for (const a of this.agents) if (a.kind === 'staff' && a.state === 'idle') this.staffDecide(a); }
     for (const a of [...this.agents]) this.updateAgent(a, simDt);
     this.processCheckouts(simDt);
   }
@@ -62,7 +62,13 @@ export class Sim {
     const regF = 1 + Math.min(s.regulars.length, 30) * 0.012;
     return L.traffic * ratingF * signF * w.traffic * evF * weekend * compF * regF;
   }
-  avgPriceRatio() { let sum = 0; for (const p of PRODUCTS) sum += this.s.prices[p.id] / p.ref; return sum / PRODUCTS.length; }
+  avgPriceRatio() {
+    const now = this.s.t;
+    if (this._apr && now - this._aprT < 30) return this._apr;
+    let sum = 0, n = 0;
+    for (const c of carriedCats(this.s)) for (const p of catProducts(c)) { sum += this.s.prices[p.id] / p.ref; n++; }
+    this._aprT = now; return (this._apr = n ? sum / n : 1);
+  }
   spawn(dt) {
     const curve = HOUR_CURVE[this.hour] * (1 + (HOUR_CURVE[(this.hour + 1) % 24] - HOUR_CURVE[this.hour]) * (this.minOfDay % 60) / 60);
     const perMin = 14 * curve * this.trafficFactor() / 60;
@@ -150,7 +156,9 @@ export class Sim {
     a.basket = []; a.spent = 0; a.wait = 0; a.missed = 0; a.exitSide = Math.random() < 0.5 ? -1 : 1;
     a.thoughts = [];
     a.state = 'enter';
-    a.wants = this.makeWants(T);
+    a.wants = this.makeWants(type);
+    // 預算：基本零用錢 + 想買的東西大概要花的錢
+    a.budget = T.budget * rand(0.4, 0.9) + a.wants.reduce((n, c) => n + (CAT_AVG[c] || 50) * rand(1.1, 2.0), 0);
     this.goTo(a, DOOR_X, STORE_FRONT_Z - 1);
     if (regular) a.name = regular.name;
   }
@@ -163,17 +171,33 @@ export class Sim {
     const s = this.s, m = { ...WEATHERS[s.weather].demand };
     const ev = s.event ? EVENTS.find(e => e.id === s.event) : null;
     if (ev) for (const k in ev.demand) m[k] = (m[k] || 1) * ev.demand[k];
-    const h = this.hour;
-    if (h >= 6 && h <= 10) m.coffee = (m.coffee || 1) * 1.6;
-    if (h >= 11 && h <= 13) m.fresh = (m.fresh || 1) * 1.6;
+    const h = this.hour, mul = (k, v) => { m[k] = (m[k] || 1) * v; };
+    if (h >= 6 && h <= 10) { mul('brew', 1.6); mul('bakery', 1.5); mul('sandwich', 1.4); mul('steam', 1.4); }
+    if (h >= 11 && h <= 13) { mul('rice', 1.6); mul('noodle', 1.6); mul('soup', 1.3); }
+    if (h >= 14 && h <= 17) { mul('dessert', 1.4); mul('snack', 1.2); }
+    if (h >= 17 && h <= 20) { mul('grocery', 1.6); mul('fried', 1.3); mul('rice', 1.2); }
+    if (h >= 18 || h <= 2) { mul('alcohol', 1.8); mul('braise', 1.4); mul('instant', 1.3); }
+    if (h >= 4 && h <= 11) mul('alcohol', 0.3);
+    if (h >= 9 && h <= 18) mul('service', 1.3); else mul('service', 0.5);
     return m;
   }
-  makeWants(T) {
+  makeWants(type) {
+    const T = CUSTOMER_TYPES[type];
+    const ti = Object.keys(CUSTOMER_TYPES).indexOf(type);
     const n = randi(T.basket[0], T.basket[1]);
     const mods = this.demandMods();
-    const w = {}; for (const k in T.prefs) w[k] = T.prefs[k] * (mods[k] || 1);
-    if (WEATHERS[this.s.weather].umbrella && Math.random() < 0.25) w.daily = (w.daily || 0) + 6;
-    const wants = []; for (let i = 0; i < n; i++) wants.push(weighted(w));
+    const carried = new Set(carriedCats(this.s));
+    const w = {}, wish = {};
+    for (const [c, C] of Object.entries(CATEGORIES)) {
+      const v = C.pop * C.aff[ti] * (mods[c] || 1);
+      if (v <= 0) continue;
+      if (carried.has(c)) w[c] = v; else wish[c] = v;
+    }
+    if (WEATHERS[this.s.weather].umbrella && Math.random() < 0.25) { if (carried.has('living')) w.living = (w.living || 0) + 6; else wish.living = 6; }
+    const wants = [];
+    if (Object.keys(w).length) for (let i = 0; i < n; i++) wants.push(weighted(w));
+    // 偶爾想買店裡沒賣的東西（看日報可以知道大家想要什麼）
+    if (Object.keys(wish).length && Math.random() < 0.08) wants.push(weighted(wish));
     return wants;
   }
 
@@ -218,9 +242,14 @@ export class Sim {
       case 'next': {
         if (!a.wants.length) { this.toQueue(a); break; }
         const cat = a.wants.shift();
-        const all = s.fixtures.filter(f => f.cat === cat && FIXTURES[f.type].cats);
-        if (!all.length) { a.sat -= 5; a.missed++; break; }
-        const stocked = all.filter(f => fixtureCount(f) > 0);
+        const all = s.unlocked.includes(cat) ? s.fixtures.filter(f => f.cat === cat && FIXTURES[f.type].cats) : [];
+        if (!all.length) {
+          a.sat -= 3; a.missed++;
+          s.today.wish = s.today.wish || {}; s.today.wish[cat] = (s.today.wish[cat] || 0) + 1;
+          if (Math.random() < 0.5) this.say(a, `沒有賣${CATEGORIES[cat].name}嗎？`, 1.8);
+          break;
+        }
+        const stocked = all.filter(f => FIXTURES[f.type].service || fixtureCount(f) > 0);
         const list = stocked.length ? stocked : all;
         let best = null, bestD = 1e9, bestCell = null;
         for (const f of list) for (const c of frontCells(f)) {
@@ -260,10 +289,11 @@ export class Sim {
   }
   pickItem(a, f) {
     const s = this.s;
-    const avail = Object.keys(f.stock).filter(p => f.stock[p] > 0);
+    const svc = FIXTURES[f.type].service;
+    const avail = svc ? catProducts('service').filter(p => p.at === svc).map(p => p.id) : Object.keys(f.stock).filter(p => f.stock[p] > 0);
     if (!avail.length) { a.sat -= 14; a.missed++; this.s.today.missed++; this.say(a, pick(THOUGHTS.noStock)); return; }
     const T = CUSTOMER_TYPES[a.ctype];
-    const w = {}; for (const p of avail) w[p] = 1 / Math.pow(s.prices[p] / PRODUCT[p].ref, 2) * (p === 'umbrella' && WEATHERS[s.weather].umbrella ? 8 : 1);
+    const w = {}; for (const p of avail) w[p] = 1 / Math.pow(s.prices[p] / PRODUCT[p].ref, 2) * (PRODUCT[p].rain && WEATHERS[s.weather].umbrella ? 8 : 1);
     const pid = weighted(w);
     const price = s.prices[pid], ratio = price / PRODUCT[pid].ref;
     const pBuy = Math.max(0, Math.min(1, 1.15 - (ratio - 1) * 2.4 * T.sens));
@@ -271,6 +301,11 @@ export class Sim {
       a.sat -= 8; if (Math.random() < 0.6) this.say(a, pick(THOUGHTS.expensive)); return;
     }
     if (ratio < 0.95) a.sat += 3;
+    if (svc) { // 服務類：不用庫存，直接到櫃檯付款
+      a.basket.push(pid); a.spent += price; this.world.pop(a.obj);
+      if (Math.random() < 0.25) this.say(a, '🎫 ' + PRODUCT[pid].name, 1.6);
+      return;
+    }
     f.stock[pid]--; if (!f.stock[pid]) delete f.stock[pid];
     s._basket[pid] = (s._basket[pid] || 0) + 1;
     a.basket.push(pid); a.spent += price;
@@ -392,7 +427,7 @@ export class Sim {
     let total = 0, cogs = 0;
     for (const pid of a.basket) {
       total += s.prices[pid]; cogs += PRODUCT[pid].cost;
-      s._basket[pid] = Math.max(0, (s._basket[pid] || 0) - 1); consume(s, pid, 1);
+      if (PRODUCT[pid].cat !== 'service') { s._basket[pid] = Math.max(0, (s._basket[pid] || 0) - 1); consume(s, pid, 1); }
       s.today.sold[pid] = (s.today.sold[pid] || 0) + 1;
       const cat = PRODUCT[pid].cat; s.today.byCat[cat] = (s.today.byCat[cat] || 0) + s.prices[pid];
     }
@@ -468,6 +503,14 @@ export class Sim {
     if (a.reserve) { this.reserved.delete(a.reserve); a.reserve = null; }
     if (a.post) { if (this.cashiers.get(a.post) === a) this.cashiers.delete(a.post); a.post = null; }
   }
+  needUrgentRestock() {
+    const s = this.s;
+    for (const f of s.fixtures) {
+      const cap = FIXTURES[f.type].cap; if (!cap || !f.cat || !s.unlocked.includes(f.cat) || this.reserved.has('f:' + f.id)) continue;
+      if (fixtureCount(f) / cap < 0.3 && catProducts(f.cat).some(p => backroom(s, p.id) > 0)) return true;
+    }
+    return false;
+  }
   staffDecide(a) {
     const s = this.s, st = s.staff.find(x => x.id === a.sid); if (!st) return;
     // 1. 收銀
@@ -529,7 +572,10 @@ export class Sim {
       case 'cashier': {
         const q = this.queues.get(a.post);
         if (q && q.length) a.idleQ = 0; else a.idleQ += dt;
-        if (a.idleQ > 3.5) { this.releaseTask(a); a.state = 'idle'; a.idleT = 0; }
+        a.cashT = (a.cashT || 0) + dt;
+        // 架上快空了：沒人排隊（或只剩一位、而且已經站很久）就先去補貨
+        const leave = a.idleQ > (this.urgent ? 0.6 : 3.5) || (this.urgent && a.cashT > 25 && (!q || q.length <= 1) && !(q?.[0] && !q[0].path));
+        if (leave) { a.cashT = 0; this.releaseTask(a); a.state = 'idle'; a.idleT = 0; }
         break;
       }
       case 'toStock': {
@@ -619,24 +665,45 @@ export class Sim {
     }
     this.ui.news('🚚', `貨到了！共 ${n} 件商品已送進倉庫，店員會陸續補上架。`);
   }
+  // 引進新的商品類別
+  unlockCat(cat) {
+    const s = this.s, C = CATEGORIES[cat];
+    if (!C || s.unlocked.includes(cat)) return { ok: false, msg: '已經引進了' };
+    const [cost, lvl] = C.unlock;
+    if (s.level < lvl) return { ok: false, msg: `需要店面等級「${STORE_LEVELS[lvl].name}」` };
+    if (s.cash < cost) return { ok: false, msg: '現金不夠' };
+    s.cash -= cost; s.today.purchases += cost; s.unlocked.push(cat);
+    const where = [...new Set(C.fix)].map(t => FIXTURES[t].name).join('或');
+    this.ui.news(C.icon, `引進了「${C.name}」！擺到${where}上就能開賣。`);
+    save(s);
+    return { ok: true };
+  }
+  // 依架位數量和最近銷量，算出某類別每個品項要叫多少貨
+  planOrder(cat, minExp = this.day) {
+    const s = this.s;
+    const cap = s.fixtures.filter(f => f.cat === cat).reduce((n, f) => n + (FIXTURES[f.type].cap || 0), 0);
+    const ps = catProducts(cat);
+    if (!cap || !ps.length || CATEGORIES[cat].service) return {};
+    const hist = s.history.slice(-3);
+    const sales = p => (hist.reduce((n, h) => n + (h.sold?.[p.id] || 0), 0) + (s.today.sold[p.id] || 0)) / (hist.length + 1);
+    const perish = ps.filter(p => p.life !== Infinity).length > ps.length / 2;
+    const sold = ps.map(sales), totalSold = sold.reduce((a, b) => a + b, 0);
+    const target = perish ? Math.max(cap * 1.2, totalSold * 1.15) : Math.max(cap * 1.8, totalSold * 3);
+    const w = sold.map(x => 1 + x * 4), sw = w.reduce((a, b) => a + b, 0);
+    const items = {};
+    ps.forEach((p, i) => {
+      const pending = s.orders.reduce((n, o) => n + (o.items[p.id] || 0), 0);
+      const have = s.inventory[p.id].filter(b => b.exp >= minExp).reduce((n, b) => n + b.q, 0) + pending;
+      const need = Math.ceil(target * w[i] / sw - have);
+      if (need > 0) items[p.id] = need;
+    });
+    return items;
+  }
   autoOrder() {
     const s = this.s;
     if (!s.staff.some(x => x.role === 'manager')) return;
-    const hist = s.history.slice(-3);
     const items = {};
-    for (const p of PRODUCTS) {
-      const avg = (hist.reduce((n, h) => n + (h.sold?.[p.id] || 0), 0) + (s.today.sold[p.id] || 0)) / (hist.length + 1);
-      const pending = s.orders.reduce((n, o) => n + (o.items[p.id] || 0), 0);
-      const have = owned(s, p.id) + pending;
-      const perishable = p.life !== Infinity;
-      const target = perishable ? Math.ceil(Math.max(6, avg * 1.15)) : Math.ceil(Math.max(30, avg * 3));
-      let need = perishable ? target - pending : target - have;
-      if (perishable) { // 隔天到貨，扣掉明天還沒過期的
-        const tomorrow = this.day + 1; const valid = s.inventory[p.id].filter(b => b.exp >= tomorrow).reduce((n, b) => n + b.q, 0);
-        need = target - valid - pending;
-      }
-      if (need > 0) items[p.id] = Math.ceil(need / 5) * 5;
-    }
+    for (const c of carriedCats(s)) Object.assign(items, this.planOrder(c, this.day + 1));
     if (!Object.keys(items).length) return;
     const r = this.placeOrder(items, 'cheap');
     if (r.ok) this.ui.news('📋', `店長已自動叫貨，花費 $${r.cost.toLocaleString()}，明早 7:00 到貨。`);
@@ -696,7 +763,7 @@ export class Sim {
     const profit = T.revenue - T.cogs - T.wages - T.rent - waste + T.branch;
     const avgSat = T.satN ? T.satSum / T.satN : 0;
     const report = { day: endedDay, ...T, profit, avgSat, rating: s.rating, weather: s.weather, event: s.event };
-    s.history.push({ day: endedDay, revenue: T.revenue, profit, customers: T.customers, sold: T.sold, rating: s.rating });
+    s.history.push({ day: endedDay, revenue: T.revenue, profit, customers: T.customers, sold: T.sold, wish: T.wish, rating: s.rating });
     if (s.history.length > 60) s.history.shift();
     // 新的一天
     s.today = blankDay();

@@ -1,5 +1,5 @@
 // 遊戲狀態：新遊戲、存檔、讀檔
-import { PRODUCTS, PRODUCT, FIXTURES, SURNAMES, GIVEN } from './data.js';
+import { PRODUCTS, PRODUCT, FIXTURES, SURNAMES, GIVEN, CATEGORIES, CAT_PRODUCTS, LEGACY_IDS, LEGACY_CATS, findProduct } from './data.js';
 
 const SAVE_KEY = 'konbini-story-save-v1';
 
@@ -35,7 +35,8 @@ export function makeStaff(id, role = 'clerk', fixed) {
 
 export function newGame() {
   const s = {
-    version: 1,
+    version: 2,
+    unlocked: Object.keys(CATEGORIES).filter(c => CATEGORIES[c].start), // 已引進的商品類別
     storeName: '日日好商店',
     hours: { open: 0, close: 24 }, // 營業時間（open = close 視為 24 小時）
     cash: 50000, t: 7 * 60, level: 0,
@@ -55,18 +56,22 @@ export function newGame() {
     tutorialDone: false,
   };
   s.today = blankDay();
-  for (const p of PRODUCTS) {
-    s.prices[p.id] = p.ref;
-    s.inventory[p.id] = [{ q: p.life === Infinity ? 30 : 14, exp: p.life === Infinity ? 99999 : p.life }];
-  }
+  for (const p of PRODUCTS) { s.prices[p.id] = p.ref; s.inventory[p.id] = []; }
   const add = (type, x, z, r, cat) => {
-    const f = { id: s.nextId++, type, x, z, r, cat: cat || FIXTURES[type].cats?.[0] || null, stock: {} };
+    const f = { id: s.nextId++, type, x, z, r, cat: cat || FIXTURES[type].defCat || FIXTURES[type].cats?.[0] || null, stock: {} };
     s.fixtures.push(f);
     return f;
   };
   add('fridge', 0, 0, 0); add('fridge', 2, 0, 0); add('chiller', 4, 0, 0); add('hotcase', 6, 0, 0);
-  add('shelf', 1, 2, 0, 'snack'); add('shelf', 4, 2, 0, 'noodle'); add('shelf', 1, 4, 0, 'daily');
+  add('shelf', 1, 2, 0, 'snack'); add('shelf', 4, 2, 0, 'instant'); add('shelf', 1, 4, 0, 'daily');
   add('counter', 6, 4, 3); add('coffee', 7, 2, 3); add('plant', 7, 6, 0);
+  // 開店庫存：每個有擺設的類別，依架位數量平均分配到各品項
+  for (const cat of carriedCats(s)) {
+    const cap = s.fixtures.filter(f => f.cat === cat).reduce((n, f) => n + (FIXTURES[f.type].cap || 0), 0);
+    const ps = CAT_PRODUCTS[cat], perish = ps[0].life !== Infinity;
+    const per = Math.max(1, Math.ceil(cap * (perish ? 1.4 : 3.5) / ps.length));
+    for (const p of ps) s.inventory[p.id].push({ q: per, exp: p.life === Infinity ? 99999 : p.life });
+  }
   for (const f of s.fixtures) fillFixture(s, f, 0.85);
   s.staff.push(makeStaff(s.nextId++, 'clerk', { name: '林小葵', shift: 'all', skill: 2, speed: 2 }));
   s.staff[0].sprite = 'staff_f';
@@ -87,20 +92,27 @@ export function consume(s, pid, q) {
   const bs = s.inventory[pid]; bs.sort((a, b) => a.exp - b.exp);
   while (q > 0 && bs.length) { const take = Math.min(q, bs[0].q); bs[0].q -= take; q -= take; if (bs[0].q <= 0) bs.shift(); }
 }
-export function catProducts(cat) { return PRODUCTS.filter(p => p.cat === cat); }
+export function catProducts(cat) { return CAT_PRODUCTS[cat] || []; }
+// 店裡實際有在賣的類別（已引進、而且有設備擺放）
+export function carriedCats(s) {
+  const set = new Set();
+  for (const f of s.fixtures) if (f.cat && s.unlocked.includes(f.cat)) set.add(f.cat);
+  return [...set];
+}
 
 // 把後場庫存補到設備上（最多補 maxUnits 個），回傳補了幾個
 export function fillFixture(s, f, ratio = 1, maxUnits = 999) {
-  const cap = FIXTURES[f.type].cap; if (!cap || !f.cat) return 0;
+  const cap = FIXTURES[f.type].cap; if (!cap || !f.cat || (s.unlocked && !s.unlocked.includes(f.cat))) return 0;
   let target = Math.floor(cap * ratio), moved = 0;
   const prods = catProducts(f.cat);
   let guard = 0;
   while (fixtureCount(f) < target && moved < maxUnits && guard++ < 500) {
     // 優先補現在架上最少的商品
-    const avail = prods.filter(p => backroom(s, p.id) > 0);
+    const avail = prods.map(p => [p, backroom(s, p.id)]).filter(x => x[1] > 0);
     if (!avail.length) break;
-    avail.sort((a, b) => (f.stock[a.id] || 0) - (f.stock[b.id] || 0));
-    const p = avail[0];
+    // 架上最少的優先，同樣少就挑倉庫最多的
+    avail.sort((a, b) => ((f.stock[a[0].id] || 0) - (f.stock[b[0].id] || 0)) || (b[1] - a[1]));
+    const p = avail[0][0];
     f.stock[p.id] = (f.stock[p.id] || 0) + 1; moved++;
   }
   return moved;
@@ -116,10 +128,36 @@ export function load() {
     return migrate(JSON.parse(raw));
   } catch (e) { return null; }
 }
+// v0.3 以前只有 24 項商品、7 個類別，轉換成新的商品目錄
+function migrateV2(s) {
+  const conv = id => (PRODUCT[id] ? id : (LEGACY_IDS[id] ? findProduct(...LEGACY_IDS[id])?.id : null));
+  const inv = {};
+  for (const k in s.inventory || {}) { const nid = conv(k); if (nid) (inv[nid] = inv[nid] || []).push(...s.inventory[k]); }
+  s.inventory = inv;
+  s.prices = {};
+  for (const f of s.fixtures) {
+    if (f.cat) f.cat = LEGACY_CATS[f.cat] || f.cat;
+    const st = {};
+    for (const k in f.stock) { const nid = conv(k); if (nid && PRODUCT[nid].cat === f.cat) st[nid] = (st[nid] || 0) + f.stock[k]; }
+    f.stock = st;
+  }
+  for (const o of s.orders || []) { const it = {}; for (const k in o.items) { const nid = conv(k); if (nid) it[nid] = (it[nid] || 0) + o.items[k]; } o.items = it; }
+  const cats = new Set(Object.keys(CATEGORIES).filter(c => CATEGORIES[c].start));
+  for (const f of s.fixtures) if (f.cat) cats.add(f.cat);
+  for (const k in s.inventory) if (s.inventory[k].some(b => b.q > 0)) cats.add(PRODUCT[k].cat);
+  s.unlocked = [...cats];
+  if (s.today) { s.today.byCat = {}; s.today.sold = {}; }
+  for (const h of s.history || []) h.sold = {};
+  if (s.missionIdx >= 4) s.missionIdx++; // 新增了「引進新類別」任務
+  s.version = 2;
+}
 export function migrate(s) {
+  if ((s.version || 1) < 2) migrateV2(s);
   const fresh = newGame();
   for (const k in fresh) if (s[k] === undefined) s[k] = fresh[k];
   for (const p of PRODUCTS) { if (!s.inventory[p.id]) s.inventory[p.id] = []; if (!s.prices[p.id]) s.prices[p.id] = p.ref; }
+  for (const k in s.inventory) if (!PRODUCT[k]) delete s.inventory[k];
+  s.unlocked = s.unlocked.filter(c => CATEGORIES[c]);
   for (const k in s.inventory) for (const b of s.inventory[k]) if (b.exp === null) b.exp = 99999;
   for (const f of s.fixtures) for (const pid in f.stock) if (!PRODUCT[pid]) delete f.stock[pid];
   return s;

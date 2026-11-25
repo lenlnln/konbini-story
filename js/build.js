@@ -1,6 +1,6 @@
 // 擺設模式：購買、移動、旋轉、出售設備
 import * as THREE from 'three';
-import { FIXTURES, STORE_FRONT_Z, DOOR_X } from './data.js';
+import { FIXTURES, STORE_FRONT_Z, DOOR_X, CATEGORIES } from './data.js';
 import { footprint, fixtureCells, frontCells, backCells, Grid } from './path.js';
 import { fillFixture } from './state.js';
 
@@ -42,7 +42,10 @@ export class Build {
   }
   renderBar() {
     const s = this.s;
-    const items = Object.entries(FIXTURES).map(([k, f]) => `<button class="bitem ${this.mode === 'new' && this.ghostType === k ? 'on' : ''}" data-buy="${k}"><span>${f.icon}</span><b>${f.name}</b><small>$${f.price.toLocaleString()}</small></button>`).join('');
+    const items = Object.entries(FIXTURES).map(([k, f]) => {
+      const locked = f.cats && !f.cats.some(c => s.unlocked.includes(c));
+      return `<button class="bitem ${this.mode === 'new' && this.ghostType === k ? 'on' : ''} ${locked ? 'locked' : ''}" data-buy="${k}" ${locked ? `data-locked="${f.cats[0]}"` : ''}><span>${f.icon}</span><b>${f.name}</b><small>${locked ? '🔒 需先引進商品' : '$' + f.price.toLocaleString()}</small></button>`;
+    }).join('');
     const sel = this.mode;
     const def = this.ghostType && FIXTURES[this.ghostType];
     let actions = '';
@@ -59,6 +62,7 @@ export class Build {
   }
   onClick(e) {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.locked) { const C = CATEGORIES[b.dataset.locked]; this.G.ui.toast(`要先在「商品」引進「${C.name}」才能買這個設備`); return; }
     if (b.dataset.buy) { this.startNew(b.dataset.buy); return; }
     const act = b.dataset.act;
     if (act === 'rotate') this.rotate();
@@ -162,7 +166,7 @@ export class Build {
       const def = FIXTURES[this.ghostType];
       if (s.cash < def.price) { this.G.ui.toast('現金不足'); return; }
       s.cash -= def.price; s.stats.placed++;
-      const f = { id: s.nextId++, type: this.ghostType, x: this.x, z: this.z, r: this.r, cat: def.defCat || def.cats?.[0] || null, stock: {} };
+      const f = { id: s.nextId++, type: this.ghostType, x: this.x, z: this.z, r: this.r, cat: !def.cats ? null : (s.unlocked.includes(def.defCat) ? def.defCat : (def.cats.find(c => s.unlocked.includes(c)) || def.cats[0])), stock: {} };
       s.fixtures.push(f);
       this.G.ui.toast(`已購買 ${def.name}`);
       this.G.ui.news('🛠️', `新增了一台「${def.name}」。`);

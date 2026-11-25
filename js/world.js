@@ -53,15 +53,7 @@ function loadTex(url) {
 }
 
 // ───────── 商品外觀 ─────────
-const SHAPE = {
-  water: 'bottle', greentea: 'bottle', soda: 'can', milktea: 'carton', sports: 'bottle',
-  beefnd: 'cup', ramen: 'cup', yakisoba: 'tray',
-  chips: 'bag', choco: 'bar', cookie: 'box', gummy: 'bag',
-  tissue: 'box', brush: 'tallbox', battery: 'smallbox', umbrella: 'umbrella',
-  onigiri: 'onigiri', bento: 'bento', sandw: 'onigiri',
-  oden: 'skewer', egg: 'egg', hotdog: 'hotdog',
-  americano: 'coffee', latte: 'coffee',
-};
+const SHAPE = new Proxy({}, { get: (_, pid) => PRODUCT[pid]?.shape || 'box' });
 const prodGeo = {};
 function productGeo(shape) {
   if (prodGeo[shape]) return prodGeo[shape];
@@ -87,6 +79,34 @@ function productGeo(shape) {
     case 'skewer': g = new THREE.SphereGeometry(0.45, 10, 8); g.scale(1, 0.8, 1); g.translate(0, 0.4, 0); break;
     case 'egg': g = new THREE.SphereGeometry(0.42, 10, 8); g.scale(1, 1.25, 1); g.translate(0, 0.5, 0); break;
     case 'hotdog': g = new THREE.CapsuleGeometry(0.28, 0.7, 4, 8); g.rotateZ(Math.PI / 2); g.translate(0, 0.3, 0); break;
+    case 'bowl': g = new THREE.CylinderGeometry(0.5, 0.38, 0.55, 14); g.translate(0, 0.28, 0); break;
+    case 'sandwich': g = new THREE.CylinderGeometry(0.6, 0.6, 0.32, 3); g.rotateX(Math.PI / 2); g.rotateZ(Math.PI / 2); g.translate(0, 0.32, 0); break;
+    case 'burger': g = new THREE.SphereGeometry(0.48, 12, 8); g.scale(1, 0.62, 1); g.translate(0, 0.3, 0); break;
+    case 'fried': g = new THREE.IcosahedronGeometry(0.46, 1); g.scale(1.1, 0.7, 0.9); g.translate(0, 0.32, 0); break;
+    case 'braise': g = new THREE.DodecahedronGeometry(0.44, 0); g.scale(1.1, 0.6, 0.9); g.translate(0, 0.27, 0); break;
+    case 'stick': g = new THREE.CapsuleGeometry(0.13, 0.85, 3, 6); g.rotateZ(Math.PI / 2); g.translate(0, 0.15, 0); break;
+    case 'corn': g = new THREE.CapsuleGeometry(0.26, 0.6, 4, 8); g.rotateZ(Math.PI / 2); g.translate(0, 0.27, 0); break;
+    case 'fruit': g = new THREE.SphereGeometry(0.45, 12, 10); g.translate(0, 0.45, 0); break;
+    case 'veg': g = new THREE.SphereGeometry(0.42, 10, 8); g.scale(0.75, 1.25, 0.75); g.translate(0, 0.52, 0); break;
+    case 'bread': g = new THREE.CapsuleGeometry(0.3, 0.5, 4, 8); g.rotateZ(Math.PI / 2); g.scale(1, 0.75, 1); g.translate(0, 0.23, 0); break;
+    case 'bun': g = new THREE.SphereGeometry(0.46, 12, 8); g.scale(1, 0.75, 1); g.translate(0, 0.3, 0); break;
+    case 'tart': g = new THREE.CylinderGeometry(0.45, 0.38, 0.32, 14); g.translate(0, 0.16, 0); break;
+    case 'loaf': g = new RoundedBoxGeometry(0.8, 0.7, 1, 2, 0.16); g.translate(0, 0.35, 0); break;
+    case 'donut': g = new THREE.TorusGeometry(0.3, 0.16, 8, 14); g.rotateX(Math.PI / 2); g.translate(0, 0.16, 0); break;
+    case 'cake': g = new THREE.CylinderGeometry(0.55, 0.55, 0.5, 3); g.translate(0, 0.25, 0); break;
+    case 'icepop': g = new RoundedBoxGeometry(0.4, 0.95, 0.16, 2, 0.08); g.translate(0, 0.48, 0); break;
+    case 'icecream': g = new THREE.ConeGeometry(0.34, 0.95, 10); g.translate(0, 0.48, 0); break;
+    case 'jar': g = new THREE.CylinderGeometry(0.34, 0.36, 0.85, 12); g.translate(0, 0.43, 0); break;
+    case 'tin': g = new THREE.CylinderGeometry(0.5, 0.5, 0.45, 14); g.translate(0, 0.23, 0); break;
+    case 'wine': {
+      const pts = [[0, 0], [0.36, 0], [0.38, 0.04], [0.38, 0.62], [0.3, 0.74], [0.14, 0.8], [0.12, 1.05], [0.14, 1.1], [0, 1.1]].map(([x, y]) => new THREE.Vector2(x, y));
+      g = new THREE.LatheGeometry(pts, 12); break;
+    }
+    case 'card': g = new RoundedBoxGeometry(0.8, 1, 0.08, 1, 0.03); g.translate(0, 0.5, 0); break;
+    case 'book': g = new RoundedBoxGeometry(0.75, 1, 0.2, 1, 0.03); g.translate(0, 0.5, 0); break;
+    case 'capsule': g = new THREE.SphereGeometry(0.4, 12, 10); g.translate(0, 0.4, 0); break;
+    case 'flower': g = new THREE.CylinderGeometry(0.48, 0.1, 1.1, 10); g.translate(0, 0.55, 0); break;
+    case 'pot': g = new THREE.CylinderGeometry(0.42, 0.3, 0.6, 12); g.translate(0, 0.3, 0); break;
     default: g = new THREE.BoxGeometry(1, 1, 1); g.translate(0, 0.5, 0);
   }
   return (prodGeo[shape] = g);
@@ -112,7 +132,14 @@ function productMat(pid) {
       x.fillStyle = shape === 'coffee' ? '#fff' : shade(p.color, 0.5); x.font = `bold 26px ${FONT}`;
       x.fillText(p.name.slice(-2), w * 0.25, h * 0.53);
       x.fillStyle = '#ffd54f'; x.fillRect(0, h * 0.86, w, h * 0.14);
-    } else if (['bag', 'bar', 'box', 'tallbox', 'smallbox', 'carton', 'bento', 'tray'].includes(shape)) {
+    } else if (['fried', 'braise', 'bun', 'fruit', 'veg', 'corn', 'bread', 'tart', 'donut', 'egg', 'skewer', 'hotdog', 'stick', 'burger', 'capsule', 'flower', 'pot', 'cake', 'icecream'].includes(shape)) {
+      // 食物：素色加一點光影斑點
+      const grd = x.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, shade(p.color, 1.18)); grd.addColorStop(1, shade(p.color, 0.82));
+      x.fillStyle = grd; x.fillRect(0, 0, w, h);
+      x.fillStyle = 'rgba(255,255,255,.12)'; for (let i = 0; i < 14; i++) { x.beginPath(); x.arc((i * 37) % w, (i * 53) % h, 6 + (i % 3) * 3, 0, Math.PI * 2); x.fill(); }
+      if (shape === 'flower') { x.fillStyle = '#4caf50'; x.fillRect(0, h * 0.55, w, h * 0.45); }
+      if (shape === 'pot') { x.fillStyle = '#a1887f'; x.fillRect(0, 0, w, h); }
+    } else if (['bag', 'bar', 'box', 'tallbox', 'smallbox', 'carton', 'bento', 'tray', 'bowl', 'jar', 'tin', 'card', 'book', 'loaf', 'icepop', 'sandwich', 'wine'].includes(shape)) {
       const grd = x.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, shade(p.color, 1.15)); grd.addColorStop(1, shade(p.color, 0.8));
       x.fillStyle = grd; x.fillRect(0, 0, w, h);
       x.fillStyle = 'rgba(255,255,255,.92)'; x.beginPath(); x.arc(w / 2, h * 0.5, 30, 0, Math.PI * 2); x.fill();
@@ -126,7 +153,7 @@ function productMat(pid) {
       x.fillStyle = 'rgba(255,255,255,.25)'; for (let i = 0; i < 6; i++) x.fillRect(0, i * 22, w, 5);
     }
   });
-  return (prodMat[pid] = new THREE.MeshStandardMaterial({ map: tex, roughness: shape === 'bottle' || shape === 'can' ? 0.25 : 0.55, metalness: shape === 'can' ? 0.4 : 0 }));
+  return (prodMat[pid] = new THREE.MeshStandardMaterial({ map: tex, roughness: ['bottle', 'can', 'wine', 'tin'].includes(shape) ? 0.25 : 0.55, metalness: shape === 'can' || shape === 'tin' ? 0.4 : 0 }));
 }
 
 // ═════════════════════════════════════════
@@ -558,6 +585,51 @@ export class World {
       g.add(rb(0.35, 0.15, 0.04, 0x80deea, -0.12, 1.5, 0.14, 0.02, { emissive: 0x26c6da, emissiveIntensity: 0.6 }));
       g.add(rb(0.22, 0.05, 0.25, 0x9e9e9e, -0.12, 0.96, 0.06, 0.01));
       for (let i = 0; i < 20; i++) slots.push({ pos: [0.3, 0.93 + (i % 10) * 0.045, 0.22 - Math.floor(i / 10) * 0.22], scale: [0.14, 0.05, 0.14] });
+    } else if (type === 'freezer') {
+      g.add(rb(W - 0.04, 0.82, 0.86, 0xf4f6f8, 0, 0.41, 0, 0.06));
+      g.add(rb(W - 0.04, 0.12, 0.05, 0x29b6f6, 0, 0.6, 0.42, 0.03));
+      g.add(mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xe1f5fe, emissive: 0xb3e5fc, emissiveIntensity: 0.35 }), 0, 0.8, 0, W - 0.2, 0.02, 0.68));
+      const glass = mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xdff1ff, transparent: true, opacity: 0.2, roughness: 0.02, metalness: 0.1 }), 0, 1.0, 0, W - 0.12, 0.03, 0.78);
+      glass.castShadow = false; g.add(glass);
+      g.add(rb(W - 0.04, 0.05, 0.84, 0xb0bec5, 0, 1.0, 0, 0.02));
+      for (let i = 0; i < 20; i++) slots.push({ pos: [-W / 2 + 0.22 + (i % 10) * ((W - 0.44) / 9), 0.82, -0.18 + Math.floor(i / 10) * 0.34], scale: [0.16, 0.16, 0.16] });
+    } else if (type === 'odenpot') {
+      g.add(rb(0.95, 0.88, 0.85, 0xb0bec5, 0, 0.44, 0, 0.05, { metalness: 0.5, roughness: 0.35 }));
+      g.add(rb(0.98, 0.06, 0.88, 0xeceff1, 0, 0.9, 0, 0.02, { metalness: 0.4 }));
+      g.add(mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xc89a50, emissive: 0x8a5a20, emissiveIntensity: 0.25, roughness: 0.15 }), 0, 0.93, 0, 0.78, 0.02, 0.7));
+      for (const x of [-0.13, 0.13]) g.add(mesh(G.box, mat(0x90a4ae, { metalness: 0.5 }), x, 0.97, 0, 0.02, 0.08, 0.7));
+      g.add(rb(0.6, 0.2, 0.05, 0xd9822b, 0, 1.3, -0.3, 0.03, { emissive: 0x8a4a10, emissiveIntensity: 0.4 }));
+      g.add(mesh(G.cyl, mat(0x90a4ae, { metalness: 0.5 }), 0, 1.15, -0.32, 0.04, 0.5, 0.04));
+      for (let i = 0; i < 16; i++) slots.push({ pos: [-0.3 + (i % 4) * 0.2, 0.92, -0.25 + Math.floor(i / 4) * 0.17], scale: [0.13, 0.13, 0.13] });
+    } else if (type === 'steamer') {
+      g.add(rb(0.95, 0.88, 0.85, 0xeceff1, 0, 0.44, 0, 0.05));
+      g.add(rb(0.98, 0.06, 0.88, 0xcfd8dc, 0, 0.9, 0, 0.02, { metalness: 0.4 }));
+      g.add(rb(0.86, 0.85, 0.72, 0xb0bec5, 0, 1.36, -0.02, 0.04, { metalness: 0.5, roughness: 0.3 }));
+      const glass = mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.25, roughness: 0.02 }), 0, 1.36, 0.35, 0.8, 0.8, 0.02);
+      glass.castShadow = false; g.add(glass);
+      g.add(mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xfff8e1, emissive: 0xffe0b2, emissiveIntensity: 0.4 }), 0, 1.36, -0.37, 0.8, 0.8, 0.01));
+      for (const y of [0.96, 1.36]) g.add(mesh(G.box, metal, 0, y - 0.02, 0, 0.8, 0.02, 0.66));
+      g.add(rb(0.6, 0.18, 0.05, 0xbca78a, 0, 1.88, 0.2, 0.03, { emissive: 0x6d5a3a, emissiveIntensity: 0.4 }));
+      for (const y of [0.96, 1.36]) for (let i = 0; i < 6; i++) slots.push({ pos: [-0.27 + (i % 3) * 0.27, y, -0.15 + Math.floor(i / 3) * 0.28], scale: [0.2, 0.2, 0.2] });
+    } else if (type === 'tobacco') {
+      g.add(rb(0.95, 1.95, 0.5, 0x4e342e, 0, 0.98, -0.18, 0.04));
+      g.add(mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xfff8e1, emissive: 0xffe0b2, emissiveIntensity: 0.3 }), 0, 1.15, 0.07, 0.82, 1.45, 0.01));
+      for (const y of [0.55, 0.95, 1.35, 1.75]) g.add(mesh(G.box, mat(0x3e2723), 0, y - 0.03, 0.02, 0.84, 0.03, 0.2));
+      for (const y of [0.55, 0.95, 1.35]) for (let i = 0; i < 6; i++) slots.push({ pos: [-0.33 + i * 0.13, y, 0.05], scale: [0.12, 0.25, 0.1] });
+    } else if (type === 'kiosk') {
+      g.add(rb(0.85, 1.25, 0.7, 0xeceff1, 0, 0.63, -0.05, 0.06));
+      g.add(rb(0.9, 0.08, 0.75, 0xb0bec5, 0, 1.27, -0.05, 0.03));
+      g.add(rb(0.6, 0.1, 0.3, 0x455a64, 0, 0.95, 0.32, 0.02));
+      const scr = rb(0.5, 0.36, 0.05, 0x263238, 0, 1.55, 0.1, 0.03); scr.rotation.x = -0.35; g.add(scr);
+      const scrL = mesh(G.box, new THREE.MeshStandardMaterial({ color: 0x4fc3f7, emissive: 0x29b6f6, emissiveIntensity: 0.8 }), 0, 1.56, 0.13, 0.42, 0.28, 0.01); scrL.rotation.x = -0.35; g.add(scrL);
+      g.add(rb(0.8, 0.12, 0.05, 0x29b6f6, 0, 1.1, 0.31, 0.02, { emissive: 0x0277bd, emissiveIntensity: 0.4 }));
+    } else if (type === 'atm') {
+      g.add(rb(0.85, 1.75, 0.7, 0x1f4e79, 0, 0.88, -0.05, 0.06));
+      g.add(rb(0.75, 0.3, 0.12, 0x263238, 0, 1.0, 0.3, 0.03));
+      const scrL = mesh(G.box, new THREE.MeshStandardMaterial({ color: 0x81d4fa, emissive: 0x4fc3f7, emissiveIntensity: 0.8 }), 0, 1.3, 0.31, 0.45, 0.3, 0.01); g.add(scrL);
+      for (let i = 0; i < 9; i++) g.add(rb(0.07, 0.03, 0.07, 0xcfd8dc, -0.1 + (i % 3) * 0.1, 1.08, 0.26 + Math.floor(i / 3) * 0.08 - 0.08, 0.01));
+      g.add(rb(0.35, 0.03, 0.05, 0x111111, 0, 0.82, 0.31, 0.01));
+      g.add(rb(0.85, 0.2, 0.05, 0xf6c344, 0, 1.68, 0.31, 0.03, { emissive: 0xc79100, emissiveIntensity: 0.4 }));
     } else if (type === 'counter') {
       g.add(rb(W - 0.04, 0.98, 0.78, 0xb08968, 0, 0.49, 0, 0.05));
       g.add(rb(W + 0.04, 0.07, 0.9, 0xf5f1ea, 0, 1.01, 0, 0.03));
@@ -587,7 +659,10 @@ export class World {
     if (def.cats) {
       const lbl = new THREE.Mesh(G.plane, new THREE.MeshBasicMaterial({ transparent: true }));
       lbl.scale.set(0.6, 0.28, 1);
-      lbl.position.set(0, type === 'fridge' ? 2.03 : type === 'shelf' ? 1.7 : type === 'chiller' ? 1.84 : 1.82, type === 'fridge' ? 0.45 : type === 'shelf' ? -0.3 : type === 'chiller' ? -0.08 : 0.3);
+      const LP = { fridge: [2.03, 0.45], shelf: [1.7, -0.3], chiller: [1.84, -0.08], freezer: [0.6, 0.46], odenpot: [1.3, -0.27], steamer: [1.88, 0.23], tobacco: [2.12, 0.08], kiosk: [1.95, 0.0], atm: [1.98, 0.0] };
+      const [ly, lz] = LP[type] || [1.82, 0.3];
+      lbl.position.set(0, ly, lz);
+      if (type === 'freezer') lbl.scale.set(0.5, 0.2, 1);
       g.add(lbl); g.userData.label = lbl;
     }
     g.userData.slots = slots;
