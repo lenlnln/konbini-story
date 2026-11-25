@@ -50,6 +50,8 @@ export class UI {
     $('#rot-l').addEventListener('click', () => this.G.rotateCam(-1));
     $('#rot-r').addEventListener('click', () => this.G.rotateCam(1));
     $('#cam-reset').addEventListener('click', () => this.G.resetCam());
+    $('#zoom-in').addEventListener('click', () => this.G.zoomCam(0.7));
+    $('#zoom-out').addEventListener('click', () => this.G.zoomCam(1 / 0.7));
     $('#clock-chip').addEventListener('click', () => this.open('hours'));
     this.sheetEl.addEventListener('click', e => this.onSheetClick(e));
     this.sheetEl.addEventListener('change', e => this.onSheetChange(e));
@@ -563,8 +565,11 @@ export class UI {
       if (!s.prep) html += '<p class="hint">店員有空時會自動從倉庫補貨上架。</p>';
     }
     if (f.type === 'counter') {
-      const q = this.sim.queues.get(f.id) || [];
-      html += `<div class="row"><span>排隊人數</span><b>${q.length}</b></div><div class="row"><span>收銀員</span><b>${this.sim.cashiers.get(f.id) ? esc(s.staff.find(x => x.id === this.sim.cashiers.get(f.id).sid)?.name || '') : '無'}</b></div>`;
+      const q = this.sim.queues.get(f.id) || [], ca = this.sim.cashiers.get(f.id);
+      html += `<h4>收銀台狀態</h4><div class="row"><span>排隊人數</span><b>${q.length} 人</b></div>
+        <div class="row"><span>收銀員</span><b>${ca ? esc(s.staff.find(x => x.id === ca.sid)?.name || '') + (ca.scanning ? '（結帳中）' : '（待命）') : '無（點收銀台可以親自結帳）'}</b></div>
+        <div class="row"><span>平均等待</span><b>${q.length ? Math.round(q.reduce((n, a) => n + a.wait, 0) / q.length * 4) + ' 分鐘' : '-'}</b></div>`;
+      html += q.length ? q.map((a, i) => { const mood = a.sat >= 80 ? '😄' : a.sat >= 60 ? '🙂' : a.sat >= 40 ? '😐' : '😠'; return `<div class="row"><span>${i === 0 ? (a.served ? '🧾 結帳中' : '⏳ 下一位') : `第 ${i + 1} 位`}・${esc(a.name || CUSTOMER_TYPES[a.ctype].name)}</span><b>${mood} ${a.basket.length} 件・等 ${Math.round(a.wait * 4)} 分</b></div>`; }).join('') : '<div class="muted">目前沒有人排隊</div>';
     }
     html += `<div class="btnrow"><button class="btn" data-editfix="${f.id}">移動 / 旋轉</button></div>`;
     return [def.icon + ' ' + def.name, html];
@@ -578,9 +583,9 @@ export class UI {
     const face = a.sat >= 80 ? '😄' : a.sat >= 60 ? '🙂' : a.sat >= 40 ? '😐' : '😠';
     const st = { next: '逛逛中', toFixture: '找商品', browse: '挑選商品', queue: '排隊結帳', leave: '離開', enter: '進店', toSeat: '找位子', sit: a.sitMode === 'eat' ? '坐著吃東西' : '坐著休息', sneak: '🚨 想偷東西！', flee: '🚨 帶著商品逃跑！', caught: '被叫住了' }[a.state] || a.state;
     return [`${a.name ? '💛 ' + a.name : T.name + '顧客'}`, `
-      ${a.sprite ? `<img class="char-portrait" src="art/chars/${a.sprite}.webp" alt="">` : ''}
       <div class="row"><span>類型</span><b>${T.name}${a.regular ? `（常客 · 第 ${a.regular.visits} 次來店）` : ''}</b></div>
       <div class="row"><span>狀態</span><b>${st}</b></div>
+      <div class="row"><span>動作</span><b>${{ walk: '走路', run: '跑步', idle: '站著', shop: '看貨架', pickup: '伸手拿商品', queue: '排隊', impatient: '等得不耐煩', checkout: '結帳中', sit: '坐著', sneak: '偷偷摸摸', caught: '嚇一跳' }[a.obj.userData.act] || '-'}</b></div>
       <div class="row"><span>心情</span><b>${face} ${Math.round(Math.max(0, Math.min(100, a.sat)))}</b></div>
       <div class="row"><span>購物籃</span><b>${a.basket.map(p => PRODUCT[p].name).join('、') || '空的'}</b></div>
       <div class="row"><span>還想買</span><b>${a.wants.map(c => CATEGORIES[c].icon).join(' ') || '-'}</b></div>

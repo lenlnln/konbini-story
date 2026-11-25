@@ -11,6 +11,7 @@ import {
   rand, randi, pick, weighted, randomName, randomLook, makeStaff, blankDay, owned, displayed, backroom,
   fixtureCount, consume, catProducts, fillFixture, save, carriedCats,
 } from './state.js';
+import { separate } from './chars.js';
 import { addOwnerXp, checkDailyQuests, makeDailyQuests } from './quests.js';
 
 let AID = 1;
@@ -49,6 +50,7 @@ export class Sim {
     this.decideAcc += simDt;
     if (this.decideAcc > 0.4) { this.decideAcc = 0; this.urgent = this.needUrgentRestock(); this.staffShifts(); for (const a of this.agents) if (a.kind === 'staff' && a.state === 'idle') this.staffDecide(a); }
     for (const a of [...this.agents]) this.updateAgent(a, simDt);
+    separate(this.agents.filter(a => a.kind !== 'passer' && !a.sitting).map(a => a.obj), simDt); // 角色互相避讓
     this.processCheckouts(simDt);
     this.social(simDt);
   }
@@ -101,6 +103,7 @@ export class Sim {
   }
   removeAgent(a) {
     this.world.agentGroup.remove(a.obj);
+    this.world.disposePerson(a.obj);
     this.agents = this.agents.filter(x => x !== a);
     this.ui.removeBubble(a);
     if (a.reserve) this.reserved.delete(a.reserve);
@@ -259,6 +262,7 @@ export class Sim {
           a.sat -= 3; a.missed++;
           s.today.wish = s.today.wish || {}; s.today.wish[cat] = (s.today.wish[cat] || 0) + 1;
           if (Math.random() < 0.5) this.say(a, `沒有賣${CATEGORIES[cat].name}嗎？`, 1.8);
+          this.world.emote(a.obj, 'sad', 1.3);
           break;
         }
         const stocked = all.filter(f => FIXTURES[f.type].service || fixtureCount(f) > 0);
@@ -294,7 +298,7 @@ export class Sim {
         a.wait += dt;
         if (a.wait > 6) a.sat -= dt * 0.9;
         if (a.wait > 10 && !a.saidQueue && Math.random() < 0.02) { a.saidQueue = true; this.say(a, pick(THOUGHTS.queue)); }
-        if (a.wait > a.patience) { this.say(a, '不買了！'); this.abandon(a); }
+        if (a.wait > a.patience) { this.say(a, '不買了！'); this.world.emote(a.obj, 'angry', 1.4); this.abandon(a); }
         break;
       }
       case 'leave': if (!a.path) this.removeAgent(a); break;
@@ -430,14 +434,14 @@ export class Sim {
     const s = this.s;
     const svc = FIXTURES[f.type].service;
     const avail = svc ? catProducts('service').filter(p => p.at === svc).map(p => p.id) : Object.keys(f.stock).filter(p => f.stock[p] > 0);
-    if (!avail.length) { a.sat -= 14; a.missed++; this.s.today.missed++; this.say(a, pick(THOUGHTS.noStock)); return; }
+    if (!avail.length) { a.sat -= 14; a.missed++; this.s.today.missed++; this.say(a, pick(THOUGHTS.noStock)); this.world.emote(a.obj, 'sad', 1.4); return; }
     const T = CUSTOMER_TYPES[a.ctype];
     const w = {}; for (const p of avail) w[p] = 1 / Math.pow(s.prices[p] / PRODUCT[p].ref, 2) * (PRODUCT[p].rain && WEATHERS[s.weather].umbrella ? 8 : 1);
     const pid = weighted(w);
     const price = s.prices[pid], ratio = price / PRODUCT[pid].ref;
     const pBuy = Math.max(0, Math.min(1, 1.15 - (ratio - 1) * 2.4 * T.sens));
     if (Math.random() > pBuy || a.spent + price > a.budget) {
-      a.sat -= 8; if (Math.random() < 0.6) this.say(a, pick(THOUGHTS.expensive)); return;
+      a.sat -= 8; if (Math.random() < 0.6) this.say(a, pick(THOUGHTS.expensive)); this.world.emote(a.obj, 'sad', 0.9); return;
     }
     if (ratio < 0.95) a.sat += 3;
     if (svc) { // 服務類：不用庫存，直接到櫃檯付款
@@ -454,6 +458,7 @@ export class Sim {
       s._basket[pid]++; a.basket.push(pid); a.spent += price;
     }
     this.world.updateFixtureStock(f);
+    this.world.hold(a.obj, CATEGORIES[PRODUCT[pid].cat].color); // 手上亮出剛拿的商品
     a.obj.userData.basket.visible = a.basket.length >= 2;
     this.world.pop(a.obj);
     if (Math.random() < 0.18) this.say(a, CATEGORIES[PRODUCT[pid].cat].icon + ' ' + PRODUCT[pid].name, 1.6);
@@ -543,6 +548,9 @@ export class Sim {
 
   // ───────── 結帳 ─────────
   processCheckouts(dt) {
+    // 給動畫用：排第幾個、是否正在被結帳、店員是否正在刷條碼
+    for (const a of this.cashiers.values()) a.scanning = false;
+    for (const q of this.queues.values()) q.forEach((x, i) => { x.qpos = i; x.served = false; });
     for (const c of this.counters()) {
       const q = this.queues.get(c.id); if (!q || !q.length) continue;
       const head = q[0];
@@ -551,7 +559,7 @@ export class Sim {
       if (!cashier || cashier.state !== 'cashier') continue;
       const st = this.G.state.staff.find(x => x.id === cashier.sid);
       const per = Math.max(0.15, 0.55 - (st?.skill || 1) * 0.08 - (st?.lvl || 1) * 0.02) * (this.hasManager() ? 0.9 : 1);
-      head.checkout = (head.checkout || 0) + dt;
+      head.checkout = (head.checkout || 0) + dt; head.served = true; cashier.scanning = true;
       if (head.checkout >= 0.6 + per * head.basket.length) { this.pay(head, c, st); }
     }
   }
@@ -577,7 +585,7 @@ export class Sim {
     if (a.wait < 5) a.sat += 3;
     this.ui.floatText(c, `+$${total}`);
     this.ui.coin();
-    this.world.pop(a.obj, 0.9); const ca = st && this.staffAgent(st.id); if (ca) this.world.pop(ca.obj, 0.6);
+    this.world.pop(a.obj, 0.9); if (a.sat >= 70) this.world.emote(a.obj, 'happy', 0.9); const ca = st && this.staffAgent(st.id); if (ca) this.world.pop(ca.obj, 0.6);
     if (st) { st.xp += 2 + a.basket.length * 0.5; this.checkLevel(st); }
     const food = a.basket.some(p => EAT_CATS.has(PRODUCT[p].cat));
     a.basket = []; a.obj.userData.basket.visible = false;

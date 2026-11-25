@@ -52,6 +52,13 @@ G.rotateCam = dir => {
   const off = cam.position.clone().sub(c.target);
   camAnim = { from: Math.atan2(off.x, off.z), to: Math.atan2(off.x, off.z) + dir * Math.PI / 2, t: 0, r: Math.hypot(off.x, off.z), y: off.y };
 };
+// 縮放：沿著鏡頭方向拉近 / 拉遠（有動畫）
+let zoomAnim = null;
+G.zoomCam = f => {
+  const c = G.world.controls, off = G.world.camera.position.clone().sub(c.target);
+  const d0 = off.length(), d1 = Math.max(c.minDistance, Math.min(c.maxDistance, d0 * f));
+  zoomAnim = { d0, d1, t: 0 };
+};
 G.resetCam = () => {
   const c = G.world.controls, b = G.world.storeBounds;
   const k = (window.innerHeight > window.innerWidth ? 1.8 : 0.88) * (0.8 + b.W / 32);
@@ -83,7 +90,8 @@ function onTap(x, y) {
   if (hit?.agent) { G.ui.open('agent', hit.agent); return; }
   if (hit?.fid) {
     const f = G.state.fixtures.find(f => f.id === hit.fid);
-    if (f?.type === 'counter' && G.sim.manualCheckout(f.id)) { G.haptic(); return; }
+    // 收銀台沒有店員時，點一下就是親自結帳；有店員時打開收銀台狀態（排隊情況）
+    if (f?.type === 'counter' && !G.sim.cashiers.get(f.id) && G.sim.manualCheckout(f.id)) { G.haptic(); return; }
     G.ui.open('fixture', hit.fid); return;
   }
   // 沒點中模型時，找最靠近點擊位置的人（手指比較好點）
@@ -103,6 +111,7 @@ let last = performance.now(), missionT = 0;
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (G.frozen) return; // 測試錄影用：由外部逐格推進
   if (G.speed > 0) {
     let simDt = dt * G.speed;
     while (simDt > 0) { const step = Math.min(simDt, 0.05); G.sim.update(step); simDt -= step; }
@@ -117,6 +126,13 @@ function frame(now) {
     const a = camAnim.from + (camAnim.to - camAnim.from) * k, c = G.world.controls.target;
     G.world.camera.position.set(c.x + Math.sin(a) * camAnim.r, c.y + camAnim.y, c.z + Math.cos(a) * camAnim.r);
     if (camAnim.t >= 1) camAnim = null;
+  }
+  if (zoomAnim) {
+    zoomAnim.t = Math.min(1, zoomAnim.t + dt * 4);
+    const c = G.world.controls, off = G.world.camera.position.clone().sub(c.target);
+    const d = zoomAnim.d0 + (zoomAnim.d1 - zoomAnim.d0) * (1 - Math.pow(1 - zoomAnim.t, 3));
+    G.world.camera.position.copy(c.target).add(off.setLength(d));
+    if (zoomAnim.t >= 1) zoomAnim = null;
   }
   G.world.controls.update();
   G.world.clampTarget();

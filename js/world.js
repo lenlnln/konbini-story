@@ -1,4 +1,4 @@
-// 3D 場景：店面、設備、商品、人物（AI 繪製的動漫角色立繪）、鏡頭
+// 3D 場景：店面、設備、商品、人物（3D Q 版角色）、鏡頭
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/OrbitControls.js';
 import { RoundedBoxGeometry } from 'three/addons/RoundedBoxGeometry.js';
@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/addons/RoomEnvironment.js';
 import { FIXTURES, PRODUCT, STORE_LEVELS, STORE_FRONT_Z, DOOR_X, CATEGORIES, SPRITES } from './data.js';
 import { footprint } from './path.js';
 import { ART, ART_COLS } from './prodart.js';
+import { makeCharacter, animateCharacter, emote, toon as charMat, disposeCharacter } from './chars.js';
 
 // ───────── 材質與幾何快取 ─────────
 const matCache = new Map();
@@ -200,7 +201,7 @@ export class World {
     c.target.set(4, 0, 3.5);
     c.enableDamping = true; c.dampingFactor = 0.12;
     c.screenSpacePanning = false;
-    c.minDistance = 6; c.maxDistance = 46;
+    c.minDistance = 3.2; c.maxDistance = 46;
     c.minPolarAngle = 0.3; c.maxPolarAngle = 1.15;
     c.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     c.touches = { ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_ROTATE };
@@ -754,36 +755,12 @@ export class World {
     }
   }
 
-  // ═════════ 人物：AI 繪製的動漫立繪 ═════════
+  // ═════════ 人物：3D Q 版角色（js/chars.js，有關節骨架與程式動畫） ═════════
   makePerson(look, outfit) {
-    const g = new THREE.Group();
-    const id = outfit.sprite || 'student_f';
-    const info = SPRITES[id] || { h: 1.5 };
-    const tex = loadTex(`art/chars/${id}.webp`);
-    const sm = new THREE.SpriteMaterial({ map: tex, alphaTest: 0.35, transparent: true });
-    const spr = new THREE.Sprite(sm);
-    spr.center.set(0.5, 0.0);
-    const h = info.h * (outfit.scale || 1);
-    const setAspect = () => { const img = tex.image; const a = img && img.width ? img.width / img.height : 0.5; g.userData.baseW = h * a; spr.scale.set(h * a, h, 1); };
-    if (tex.image && tex.image.width) setAspect(); else spr.scale.set(h * 0.5, h, 1); // 圖片載入後在 animatePerson 修正比例
-    const body = new THREE.Group(); body.add(spr); g.add(body);
-    const shadow = new THREE.Mesh(G.plane, this.shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.scale.set(0.75, 0.75, 1); shadow.position.y = 0.035; g.add(shadow);
-    // 手上物品：小圖示
-    const icon = (emoji, y) => {
-      const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.emojiTex(emoji), depthTest: true }));
-      s.center.set(0.5, 0); s.scale.set(0.34, 0.34, 1); s.position.set(0.32, y, 0.05); s.visible = false; body.add(s); return s;
-    };
-    const basket = icon('🧺', h * 0.25);
-    const carry = icon('📦', h * 0.45);
-    g.userData = {
-      body, spr, basket, carry, h, fixAspect: setAspect, baseW: h * 0.5,
-      phase: Math.random() * 6, idleP: Math.random() * 6, walk: 0, flip: 1, flipVis: 1, pop: 0, lookT: 2 + Math.random() * 5,
-      vis: null, last: new THREE.Vector3(),
-      // 每個人走路的位置有一點偏移，不會全部踩在同一條線上
-      off: new THREE.Vector2((Math.random() - 0.5) * 0.22, (Math.random() - 0.5) * 0.22),
-      stride: 0.9 + Math.random() * 0.25,
-    };
-    if (tex.image && tex.image.width) setAspect();
+    const g = makeCharacter(look, outfit);
+    const shadow = new THREE.Mesh(G.plane, this.shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.scale.set(0.62, 0.62, 1); shadow.position.y = 0.035; g.add(shadow);
+    g.userData.shadow = shadow;
+    g.userData.castAll(!!this.state.settings.shadows && this.state.settings.quality !== 'low');
     return g;
   }
   emojiTex(e) {
@@ -793,61 +770,10 @@ export class World {
   }
   // 動作反應（拿商品、結帳、補貨時彈一下）
   pop(o, k = 1) { if (o?.userData) o.userData.pop = Math.max(o.userData.pop, k); }
-  animatePerson(o, moving, dt, speedMul = 1) {
-    const u = o.userData;
-    if (!u.spr) return;
-    if (!u.aspectOk && u.spr.material.map.image && u.spr.material.map.image.width) { u.fixAspect(); u.aspectOk = true; }
-    const p = o.position;
-    // ── 位置平滑：模擬是走格子，畫面上用緩動追上去，轉角自然變圓、起步停步有加減速 ──
-    const ag = u.agent; // 模擬中的格子位置（真正的位置）
-    const tx = (ag ? ag.x + 0.5 : p.x) + u.off.x, tz = (ag ? ag.z + 0.5 : p.z) + u.off.y;
-    if (!u.vis || Math.hypot(u.vis.x - tx, u.vis.z - tz) > 1.6) { u.vis = new THREE.Vector3(tx, 0, tz); u.last.copy(u.vis); }
-    const k = 1 - Math.exp(-dt * 7);
-    u.vis.x += (tx - u.vis.x) * k; u.vis.z += (tz - u.vis.z) * k;
-    const dx = u.vis.x - u.last.x, dz = u.vis.z - u.last.z;
-    const v = dt > 0 ? Math.hypot(dx, dz) / dt : 0;
-    u.last.copy(u.vis);
-    p.x = u.vis.x; p.z = u.vis.z;
-    // ── 面向：依螢幕上的左右移動翻面，翻面時像紙片一樣轉過去 ──
-    if (v > 0.25) {
-      this._right = this._right || new THREE.Vector3();
-      this._right.setFromMatrixColumn(this.camera.matrixWorld, 0);
-      const sx = dx * this._right.x + dz * this._right.z;
-      if (Math.abs(sx) > 0.15 * v * dt) u.flip = sx < 0 ? -1 : 1;
-    }
-    // ── 走路強度：0 = 站著，1 = 全速走 ──
-    const target = Math.min(1, v / 1.2);
-    u.walk += (target - u.walk) * (1 - Math.exp(-dt * 10));
-    const w = u.walk;
-    // 待機時偶爾左右張望
-    if (w < 0.05) {
-      u.lookT -= dt;
-      if (u.lookT < 0) { u.flip = -u.flip; u.lookT = 2.5 + Math.random() * 6; }
-    }
-    u.flipVis += (u.flip - u.flipVis) * (1 - Math.exp(-dt * 14));
-    // ── 步伐 ──
-    u.phase += dt * (6 + 5 * speedMul) * u.stride * (0.25 + 0.75 * w);
-    u.idleP += dt * 1.8;
-    const step = Math.sin(u.phase);
-    const hop = Math.abs(step);
-    // 彈跳反應
-    u.pop = Math.max(0, u.pop - dt * 3.2);
-    const popY = Math.sin(u.pop * Math.PI) * 0.09;
-    const breath = Math.sin(u.idleP) * 0.014 * (1 - w);
-    u.sitK = (u.sitK || 0) + ((ag?.sitting ? 1 : 0) - (u.sitK || 0)) * k;
-    u.body.position.y = hop * 0.065 * w + popY - 0.2 * u.sitK;
-    const squash = (1 - hop) * 0.05 * w;
-    const sy = 1 - squash + breath + popY * 0.5;
-    const sxk = 1 + squash * 0.8 - breath * 0.6;
-    // 左右擺動 + 往前進方向微微前傾；站著時重心慢慢移動
-    const lean = -u.flipVis * 0.055 * w;
-    const sway = step * 0.075 * w + Math.sin(u.idleP * 0.5) * 0.018 * (1 - w);
-    u.spr.material.rotation = lean + sway;
-    const fv = Math.sign(u.flipVis) * Math.max(0.12, Math.abs(u.flipVis));
-    u.spr.scale.set(u.baseW * sxk * fv, u.h * sy, 1);
-    // 影子跟著彈跳縮放
-    const sh = o.children[1]; if (sh) { const s2 = 0.75 * (1 - (hop * 0.065 * w + popY) * 1.6); sh.scale.set(s2, s2, 1); }
-  }
+  animatePerson(o, moving, dt, speedMul = 1) { animateCharacter(o, moving, dt, speedMul, this); }
+  emote(o, kind, dur) { emote(o, kind, dur); }
+  disposePerson(o) { disposeCharacter(o); }
+  hold(o, color) { const u = o?.userData; if (!u?.rig3d) return; u.heldBox.material = charMat(color); u.heldT = 1.3; }
 
   // ═════════ 送貨車 ═════════
   makeTruck() {
@@ -958,7 +884,6 @@ export class World {
     for (const m of this.lampMats || []) m.emissive.setRGB(night * 1.5, night * 1.35, night * 0.8);
     // 人物立繪在夜晚稍微變暗
     const k = 0.55 + 0.45 * Math.max(day, 0.5);
-    for (const a of this.agentGroup.children) a.userData.spr?.material.color.setRGB(k, k, k * 0.98);
   }
 
   // ═════════ 點擊 ═════════
