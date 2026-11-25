@@ -1,8 +1,11 @@
 // 模擬：時間、顧客 AI、店員 AI、經濟
 import {
   MIN_PER_SEC, FIXTURES, PRODUCTS, PRODUCT, CUSTOMER_TYPES, HOUR_CURVE, STORE_LEVELS, STORE_FRONT_Z, DOOR_X,
-  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES, TYPE_SPRITES, CAT_AVG,
+  WEATHERS, SEASONS, EVENTS, MISSIONS, THOUGHTS, CATEGORIES, DISTRICTS, UPGRADES, TYPE_SPRITES, CAT_AVG, CHATS,
 } from './data.js';
+
+// 買了這些類別的客人，可能會留在店裡的座位吃完再走
+const EAT_CATS = new Set(['brew', 'rice', 'noodle', 'sandwich', 'fried', 'grill', 'steam', 'oden', 'braise', 'side', 'soup', 'instant', 'bakery', 'dessert']);
 import { frontCells, backCells, DIRS, fixtureCells } from './path.js';
 import {
   rand, randi, pick, weighted, randomName, randomLook, makeStaff, blankDay, owned, displayed, backroom,
@@ -18,6 +21,8 @@ export class Sim {
     this.queues = new Map(); // counterId -> [agents]
     this.cashiers = new Map(); // counterId -> staff agent
     this.reserved = new Set(); // 'f:id' or 'd:idx'
+    this.seats = new Map(); // 'fid:i' -> agent
+    this.talks = []; this.chatAcc = 0;
     this.spawnAcc = 0; this.passAcc = 0; this.decideAcc = 0;
     this.lastHour = Math.floor((G.state.t % 1440) / 60);
     this.lastDay = this.day;
@@ -44,6 +49,7 @@ export class Sim {
     if (this.decideAcc > 0.4) { this.decideAcc = 0; this.urgent = this.needUrgentRestock(); this.staffShifts(); for (const a of this.agents) if (a.kind === 'staff' && a.state === 'idle') this.staffDecide(a); }
     for (const a of [...this.agents]) this.updateAgent(a, simDt);
     this.processCheckouts(simDt);
+    this.social(simDt);
   }
 
   // ───────── 生成 ─────────
@@ -98,6 +104,7 @@ export class Sim {
     this.ui.removeBubble(a);
     if (a.reserve) this.reserved.delete(a.reserve);
     for (const [k, v] of this.cashiers) if (v === a) this.cashiers.delete(k);
+    if (a.seat) { this.seats.delete(a.seat.key); a.seat = null; }
   }
   setPos(a, x, z) { a.x = x; a.z = z; a.obj.position.set(x + 0.5, 0, z + 0.5); }
   goTo(a, tx, tz) {
@@ -157,6 +164,9 @@ export class Sim {
     a.thoughts = [];
     a.state = 'enter';
     a.wants = this.makeWants(type);
+    // 少數客人會順手牽羊：深夜比較多，店員越多越不敢
+    const h = this.hour, staffN = this.agents.filter(x => x.kind === 'staff' && x.state !== 'offduty').length;
+    a.thief = !regular && type !== 'elder' && Math.random() < (h >= 22 || h <= 4 ? 0.07 : 0.035) / (1 + staffN * 0.3);
     // 預算：基本零用錢 + 想買的東西大概要花的錢
     a.budget = T.budget * rand(0.4, 0.9) + a.wants.reduce((n, c) => n + (CAT_AVG[c] || 50) * rand(1.1, 2.0), 0);
     this.goTo(a, DOOR_X, STORE_FRONT_Z - 1);
@@ -205,6 +215,7 @@ export class Sim {
   updateAgent(a, dt) {
     const moving = this.move(a, dt);
     this.world.animatePerson(a.obj, moving, dt, a.speed / 1.6);
+    if (a.state === 'flee' && a.z >= STORE_FRONT_Z + 0.3) this.thiefEscaped(a);
     if (moving) return;
     switch (a.kind) {
       case 'passer': if (!a.path) this.removeAgent(a); break;
@@ -240,7 +251,7 @@ export class Sim {
         a.state = 'next';
         break;
       case 'next': {
-        if (!a.wants.length) { this.toQueue(a); break; }
+        if (!a.wants.length) { if (a.thief && a.basket.length) this.startSneak(a); else this.toQueue(a); break; }
         const cat = a.wants.shift();
         const all = s.unlocked.includes(cat) ? s.fixtures.filter(f => f.cat === cat && FIXTURES[f.type].cats) : [];
         if (!all.length) {
@@ -273,6 +284,7 @@ export class Sim {
         a.timer -= dt; if (a.timer > 0) break;
         const f = s.fixtures.find(x => x.id === a.target);
         if (f) this.pickItem(a, f);
+        if (a.thief && Math.random() < 0.3) this.say(a, '👀', 1.2);
         if (s.dirt.some(d => Math.abs(d.x - a.x) <= 2 && Math.abs(d.z - a.z) <= 2) && !a.sawDirt) { a.sawDirt = true; a.sat -= 4; if (Math.random() < 0.3) this.say(a, pick(THOUGHTS.dirty)); }
         a.state = 'next';
         break;
@@ -285,7 +297,133 @@ export class Sim {
         break;
       }
       case 'leave': if (!a.path) this.removeAgent(a); break;
+      case 'toSeat': {
+        const st = a.seat; if (!st) { this.leave(a); break; }
+        a.x = st.wx - 0.5; a.z = st.wz - 0.5; a.sitting = true; a.state = 'sit';
+        a.obj.rotation.y = Math.atan2(st.cx - st.wx, st.cz - st.wz);
+        a.timer = a.sitMode === 'eat' ? rand(9, 15) : rand(6, 10);
+        this.say(a, pick(a.sitMode === 'eat' ? THOUGHTS.eat : THOUGHTS.rest), 2);
+        break;
+      }
+      case 'sit': {
+        a.timer -= dt;
+        if (a.sitMode === 'eat' && Math.random() < dt * 0.12) this.say(a, pick(['😋', '🍴', '😋 嗯～']), 1.2);
+        if (a.timer > 0) break;
+        this.standUp(a);
+        a.sat += 4;
+        if (a.sitMode === 'eat' && Math.random() < 0.25 && this.s.dirt.length < 10) { // 吃完留下一點垃圾，店員會來清
+          this.s.dirt.push({ x: a.seat0[0], z: a.seat0[1], ox: rand(-0.2, 0.2), oz: rand(-0.2, 0.2) }); this.world.syncDirt();
+        }
+        this.leave(a);
+        break;
+      }
+      case 'sneak': {
+        a.timer -= dt; if (a.timer > 0) break;
+        if (a.catcher && this.agents.includes(a.catcher)) { this.catchThief(a, a.catcher); break; }
+        a.state = 'flee'; a.speed *= 1.2;
+        const [ex, ez] = this.edgePoint(a.exitSide || 1);
+        if (!this.goTo(a, ex, ez)) this.thiefEscaped(a);
+        break;
+      }
+      case 'flee': if (!a.path) { if (!a.escaped) this.thiefEscaped(a); this.removeAgent(a); } break;
+      case 'caught': {
+        a.timer -= dt; if (a.timer > 0) break;
+        const s = this.s, n = a.basket.length;
+        if (Math.random() < 0.6) { // 乖乖去結帳
+          a.thief = false; a.sat = 35; this.say(a, '我、我去結帳…', 1.8); this.toQueue(a);
+        } else { // 東西丟下就跑
+          for (const pid of a.basket) s._basket[pid] = Math.max(0, (s._basket[pid] || 0) - 1);
+          a.basket = []; a.left = true; this.say(a, '我不要了！', 1.6);
+          this.ui.news('🚨', `喝止成功！追回 ${n} 件商品，店員會再擺回架上。`);
+          this.leave(a);
+        }
+        break;
+      }
     }
+  }
+  // ───────── 座位：吃東西、休息 ─────────
+  trySit(a, mode) {
+    const s = this.s;
+    for (const f of s.fixtures) {
+      if (f.type !== 'table') continue;
+      const th = f.r * Math.PI / 2, cx = f.x + 0.5, cz = f.z + 0.5;
+      const seats = [[-0.34, 0.26], [0.34, -0.26]].map(([lx, lz], i) => ({
+        key: f.id + ':' + i, cx, cz, wx: cx + lx * Math.cos(th) + lz * Math.sin(th), wz: cz - lx * Math.sin(th) + lz * Math.cos(th),
+      })).filter(st => !this.seats.has(st.key));
+      if (!seats.length) continue;
+      // 找桌子旁邊能走到的格子
+      let cell = null, bd = 1e9;
+      for (const [dx, dz] of [[0, 1], [1, 0], [-1, 0], [0, -1]]) {
+        const x = f.x + dx, z = f.z + dz;
+        if (!this.grid.walkable(x, z)) continue;
+        const d = Math.hypot(x - a.x, z - a.z); if (d < bd) { bd = d; cell = [x, z]; }
+      }
+      if (!cell || !this.goTo(a, cell[0], cell[1])) continue;
+      const st = seats.sort((p, q) => Math.hypot(p.wx - cell[0] - 0.5, p.wz - cell[1] - 0.5) - Math.hypot(q.wx - cell[0] - 0.5, q.wz - cell[1] - 0.5))[0];
+      this.seats.set(st.key, a); a.seat = st; a.seat0 = cell; a.sitMode = mode; a.state = 'toSeat';
+      return true;
+    }
+    return false;
+  }
+  standUp(a) {
+    if (a.seat) { this.seats.delete(a.seat.key); a.seat = null; }
+    a.sitting = false;
+    if (a.seat0) this.setPos(a, a.seat0[0], a.seat0[1]);
+  }
+  // ───────── 閒聊 ─────────
+  social(dt) {
+    for (const t of this.talks) t.t -= dt;
+    for (const t of this.talks) if (t.t <= 0 && this.agents.includes(t.a)) this.say(t.a, t.text, 2.2);
+    this.talks = this.talks.filter(t => t.t > 0);
+    this.chatAcc += dt; if (this.chatAcc < 1.5) return; this.chatAcc = 0;
+    const ok = ['sit', 'browse', 'queue', 'toFixture'];
+    const cs = this.agents.filter(a => a.kind === 'customer' && ok.includes(a.state) && !a.path && !(a.chatCD > this.s.t) && !this.ui.bubbles.has(a));
+    for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) {
+      const a = cs[i], b = cs[j];
+      const d = Math.hypot(a.x - b.x, a.z - b.z);
+      const same = a.seat && b.seat && a.seat.cx === b.seat.cx && a.seat.cz === b.seat.cz;
+      if (!(same || d < 1.6)) continue;
+      if (Math.random() > (same ? 0.5 : 0.18)) continue;
+      const [q, r] = pick(CHATS);
+      this.say(a, '💬 ' + q, 2.2); this.talks.push({ a: b, text: '💬 ' + r, t: 1.4 });
+      a.chatCD = b.chatCD = this.s.t + 60; a.sat += 1; b.sat += 1;
+      return;
+    }
+  }
+  // ───────── 偷竊 ─────────
+  startSneak(a) {
+    a.state = 'sneak'; a.timer = 2.4; a.sneaking = true;
+    this.say(a, pick(THOUGHTS.sneak), 2.4);
+    a.obj.userData.basket.visible = false;
+    // 附近有店員的話，有機會被當場發現
+    const near = this.agents.find(x => x.kind === 'staff' && !['offduty', 'arrive', 'cashier'].includes(x.state) && Math.hypot(x.x - a.x, x.z - a.z) < 3.2);
+    if (near && Math.random() < 0.45) a.catcher = near;
+    if (!this.s.prep) this.ui.assistant('🚨 有客人鬼鬼祟祟的，好像要偷東西！快按頭上的「喝止」！', 4);
+  }
+  stopThief(a) {
+    if (!this.agents.includes(a) || a.escaped || !['sneak', 'flee'].includes(a.state)) return false;
+    this.catchThief(a, null); return true;
+  }
+  catchThief(a, by) {
+    a.path = null; a.state = 'caught'; a.timer = 1.8; a.sneaking = false; a.speed = Math.min(a.speed, 1.6);
+    this.s.today.caught = (this.s.today.caught || 0) + 1;
+    this.say(a, pick(THOUGHTS.sorry), 1.8);
+    if (by) { this.face(a, { type: 'plant', x: Math.round(by.x), z: Math.round(by.z), r: 0 }); this.say(by, '先生，請等一下！', 1.8); this.world.pop(by.obj, 1); this.ui.news('👮', '店員當場發現有人想偷東西，把他攔下來了！'); }
+    this.world.pop(a.obj, 1.3);
+    this.s.rating = Math.min(5, this.s.rating + 0.01);
+  }
+  thiefEscaped(a) {
+    const s = this.s;
+    if (a.escaped) return;
+    a.escaped = true; a.sneaking = false; a.left = true;
+    let val = 0, cost = 0; const n = a.basket.length;
+    for (const pid of a.basket) {
+      s._basket[pid] = Math.max(0, (s._basket[pid] || 0) - 1); consume(s, pid, 1);
+      val += s.prices[pid]; cost += PRODUCT[pid].cost;
+    }
+    a.basket = [];
+    s.today.stolen = (s.today.stolen || 0) + cost; s.today.stolenN = (s.today.stolenN || 0) + n;
+    if (n) { this.ui.news('😠', `有人偷了 ${n} 件商品（售價 $${val}）溜走了…看到 🚨 時記得按「喝止」！`); this.ui.toast(`😠 被偷走 ${n} 件商品！`); }
   }
   pickItem(a, f) {
     const s = this.s;
@@ -439,9 +577,12 @@ export class Sim {
     this.ui.coin();
     this.world.pop(a.obj, 0.9); const ca = st && this.staffAgent(st.id); if (ca) this.world.pop(ca.obj, 0.6);
     if (st) { st.xp += 2 + a.basket.length * 0.5; this.checkLevel(st); }
+    const food = a.basket.some(p => EAT_CATS.has(PRODUCT[p].cat));
     a.basket = []; a.obj.userData.basket.visible = false;
     a.checkout = 0;
     this.leaveQueue(a);
+    const rest = ['elder', 'resident'].includes(a.ctype) ? 0.2 : 0.06;
+    if (this.isOpen() && (food && Math.random() < 0.5 && this.trySit(a, 'eat') || Math.random() < rest && this.trySit(a, 'rest'))) return;
     this.leave(a);
   }
 
@@ -645,6 +786,7 @@ export class Sim {
   placeOrder(items, supplier) {
     const s = this.s;
     let cost = 0;
+    if (!Object.values(items).some(q => q > 0)) return { ok: false, cost: 0, empty: true };
     for (const pid in items) cost += PRODUCT[pid].cost * items[pid] * (supplier === 'cheap' ? 0.9 : 1.1);
     cost = Math.round(cost + (supplier === 'fast' ? 150 : 0));
     if (cost > s.cash) return { ok: false, cost };
@@ -660,12 +802,14 @@ export class Sim {
     const due = s.orders.filter(o => o.arrive <= s.t);
     if (!due.length) return;
     s.orders = s.orders.filter(o => o.arrive > s.t);
-    let n = 0;
+    let n = 0; const byCat = {};
     for (const o of due) for (const pid in o.items) {
       const p = PRODUCT[pid]; const q = o.items[pid]; n += q;
+      byCat[p.cat] = (byCat[p.cat] || 0) + q;
       s.inventory[pid].push({ q, exp: p.life === Infinity ? 99999 : day + p.life - 1 });
     }
     this.ui.news('🚚', `貨到了！共 ${n} 件商品已送進倉庫，店員會陸續補上架。`);
+    if (n) { this.ui.delivery(byCat, n); this.world.truckArrive(); }
   }
   // 引進新的商品類別
   unlockCat(cat) {
@@ -763,7 +907,7 @@ export class Sim {
     }
     T.waste = waste; T.wasteN = wasteN;
     s.cash += T.branch - T.wages - T.rent;
-    const profit = T.revenue - T.cogs - T.wages - T.rent - waste + T.branch;
+    const profit = T.revenue - T.cogs - T.wages - T.rent - waste - (T.stolen || 0) + T.branch;
     const avgSat = T.satN ? T.satSum / T.satN : 0;
     const report = { day: endedDay, ...T, profit, avgSat, rating: s.rating, weather: s.weather, event: s.event };
     s.history.push({ day: endedDay, revenue: T.revenue, profit, customers: T.customers, sold: T.sold, wish: T.wish, rating: s.rating });

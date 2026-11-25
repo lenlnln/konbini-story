@@ -54,7 +54,7 @@ G.rotateCam = dir => {
 };
 G.resetCam = () => {
   const c = G.world.controls, b = G.world.storeBounds;
-  const k = (window.innerHeight > window.innerWidth ? 1.85 : 1.1) * (0.8 + b.W / 32);
+  const k = (window.innerHeight > window.innerWidth ? 1.8 : 0.88) * (0.8 + b.W / 32);
   c.target.set(b.W / 2, 0, (b.z0 + b.D) / 2 + 0.5);
   G.world.camera.position.set(b.W / 2 - 3 * k, 13 * k, (b.z0 + b.D) / 2 + 12 * k);
 };
@@ -121,6 +121,7 @@ function frame(now) {
   G.world.controls.update();
   G.world.clampTarget();
   G.world.updateWalls();
+  G.world.tick(dt);
   G.world.setTimeOfDay(G.state.t % 1440, G.state.weather);
   G.ui.update(dt);
   G.world.render();

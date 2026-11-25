@@ -70,6 +70,9 @@ export class UI {
     if (this.sideT <= 0) { this.sideT = 0.5; this.renderSide(); this.renderMission(); if (this.panel && this.livePanels.has(this.panel)) this.refreshPanel(); }
     this.updateBubbles(dt);
     this.updateCounterButtons();
+    this.updateThiefButtons();
+    this.deliveryT = (this.deliveryT || 0) - dt;
+    if (this.deliveryT <= 0) $('#delivery')?.classList.remove('show');
     // 小助手提醒
     this.warnT -= dt;
     if (this.warnT <= 0) { this.warnT = 25; this.checkWarnings(); }
@@ -85,6 +88,7 @@ export class UI {
       <div class="row"><span>現金</span><b>${money(s.cash)}</b></div>
       <div class="row"><span>今日營收</span><b class="pos">${money(s.today.revenue)}</b></div>
       <div class="row"><span>客單價</span><b>${money(avgTicket)}</b></div>
+      <div class="row"><span>顧客滿意度</span><b>${s.today.satN ? Math.round(s.today.satSum / s.today.satN) + '%' : '-'}</b></div>${s.today.satN ? `<div class="bar sat"><i style="width:${Math.round(s.today.satSum / s.today.satN)}%"></i></div>` : ''}
       <div class="row"><span>店內顧客</span><b>${this.sim.agents.filter(a => a.kind === 'customer').length} 人</b></div>
       <div class="row"><span>常客</span><b>${s.regulars.length} 位</b></div>
       ${h.length ? `<div class="spark">${h.map(x => `<i style="height:${Math.max(6, Math.min(100, x.revenue / Math.max(...h.map(y => y.revenue), 1) * 100))}%" title="第${x.day}天 ${money(x.revenue)}"></i>`).join('')}</div>` : ''}`;
@@ -203,6 +207,43 @@ export class UI {
       el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
     for (const [id, el] of this.cbtn) if (!need.has(id)) { el.remove(); this.cbtn.delete(id); }
+  }
+
+  // 偷竊中的客人頭上出現「喝止」按鈕
+  updateThiefButtons() {
+    const sim = this.sim, w = this.G.world;
+    this.tbtn = this.tbtn || new Map();
+    const need = new Set(), v = new THREE.Vector3();
+    for (const a of sim.agents) {
+      if (a.kind !== 'customer' || a.escaped || !['sneak', 'flee'].includes(a.state)) continue;
+      need.add(a);
+      let el = this.tbtn.get(a);
+      if (!el) {
+        el = document.createElement('button'); el.className = 'stop-btn'; el.innerHTML = '🚨 喝止！';
+        el.addEventListener('click', ev => { ev.stopPropagation(); if (sim.stopThief(a)) { this.G.haptic(); this.toast('🚨 「等一下！還沒結帳喔！」'); } });
+        this.overlay.appendChild(el); this.tbtn.set(a, el);
+      }
+      v.set(a.obj.position.x, (a.obj.userData.h || 1.5) + 0.55, a.obj.position.z);
+      const p = w.project(v);
+      el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
+      el.style.display = p.visible ? '' : 'none';
+    }
+    for (const [a, el] of this.tbtn) if (!need.has(a)) { el.remove(); this.tbtn.delete(a); }
+  }
+  // 到貨通知卡
+  delivery(byCat, n) {
+    let el = $('#delivery');
+    if (!el) { el = document.createElement('div'); el.id = 'delivery'; document.body.appendChild(el); el.addEventListener('click', () => el.classList.remove('show')); }
+    const rows = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+    el.innerHTML = `<div class="dl-head"><span class="dl-truck">🚚</span><div><b>到貨了！</b><small>共 ${n} 件商品已送進倉庫</small></div></div>
+      <div class="dl-items">${rows.slice(0, 8).map(([c, q]) => `<span>${CATEGORIES[c].icon} ${CATEGORIES[c].name} <b>×${q}</b></span>`).join('')}${rows.length > 8 ? `<span>…等 ${rows.length} 類</span>` : ''}</div>
+      <small class="dl-foot">${this.s.prep ? '在設備面板按「🧺 從倉庫上架」就能擺上去' : '店員會陸續補上架'}</small>`;
+    el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+    this.deliveryT = 5;
+    this.G.haptic();
+    // 門口飄出「+N 件」
+    const fx = document.createElement('div'); fx.className = 'float box'; fx.textContent = `📦 +${n} 件`; this.overlay.appendChild(fx);
+    this.floats.push({ el: fx, pos: new THREE.Vector3(1.5, 1.4, 7.2), t: -0.2 });
   }
 
   // ───────── 面板 ─────────
@@ -453,7 +494,7 @@ export class UI {
     if (a.kind === 'passer') return ['路人', '<p class="hint">只是路過的行人。招牌越吸睛、評價越高，越多路人會走進來。</p>'];
     const T = CUSTOMER_TYPES[a.ctype];
     const face = a.sat >= 80 ? '😄' : a.sat >= 60 ? '🙂' : a.sat >= 40 ? '😐' : '😠';
-    const st = { next: '逛逛中', toFixture: '找商品', browse: '挑選商品', queue: '排隊結帳', leave: '離開', enter: '進店' }[a.state] || a.state;
+    const st = { next: '逛逛中', toFixture: '找商品', browse: '挑選商品', queue: '排隊結帳', leave: '離開', enter: '進店', toSeat: '找位子', sit: a.sitMode === 'eat' ? '坐著吃東西' : '坐著休息', sneak: '🚨 想偷東西！', flee: '🚨 帶著商品逃跑！', caught: '被叫住了' }[a.state] || a.state;
     return [`${a.name ? '💛 ' + a.name : T.name + '顧客'}`, `
       ${a.sprite ? `<img class="char-portrait" src="art/chars/${a.sprite}.webp" alt="">` : ''}
       <div class="row"><span>類型</span><b>${T.name}${a.regular ? `（常客 · 第 ${a.regular.visits} 次來店）` : ''}</b></div>
@@ -461,7 +502,9 @@ export class UI {
       <div class="row"><span>心情</span><b>${face} ${Math.round(Math.max(0, Math.min(100, a.sat)))}</b></div>
       <div class="row"><span>購物籃</span><b>${a.basket.map(p => PRODUCT[p].name).join('、') || '空的'}</b></div>
       <div class="row"><span>還想買</span><b>${a.wants.map(c => CATEGORIES[c].icon).join(' ') || '-'}</b></div>
-      ${a.state === 'queue' ? `<div class="row"><span>已等待</span><b>${Math.round(a.wait * 4)} 分鐘</b></div>` : ''}`];
+      ${a.state === 'queue' ? `<div class="row"><span>已等待</span><b>${Math.round(a.wait * 4)} 分鐘</b></div>` : ''}
+      ${a.thief && !a.escaped && ['browse', 'next', 'toFixture'].includes(a.state) ? '<p class="hint">👀 這位客人眼神飄來飄去，好像怪怪的…</p>' : ''}
+      ${['sneak', 'flee'].includes(a.state) && !a.escaped ? `<div class="btnrow"><button class="btn danger big" data-stopthief="${a.id}">🚨 喝止！</button></div>` : ''}`];
   }
   pDaily(r) {
     const s = this.s;
@@ -476,6 +519,8 @@ export class UI {
       <div class="row"><span>員工薪資</span><b class="neg">-${money(r.wages)}</b></div>
       <div class="row"><span>店面租金</span><b class="neg">-${money(r.rent)}</b></div>
       ${r.waste ? `<div class="row"><span>過期報廢（${r.wasteN} 件）</span><b class="neg">-${money(r.waste)}</b></div>` : ''}
+      ${r.stolen ? `<div class="row"><span>商品失竊（${r.stolenN} 件）</span><b class="neg">-${money(r.stolen)}</b></div>` : ''}
+      ${r.caught ? `<div class="row"><span>喝止偷竊</span><b class="pos">${r.caught} 次</b></div>` : ''}
       ${r.branch ? `<div class="row"><span>分店收入</span><b class="pos">+${money(r.branch)}</b></div>` : ''}
       <div class="row total"><span>本日淨利</span><b class="${r.profit >= 0 ? 'pos' : 'neg'}">${money(r.profit)}</b></div>
       <div class="row"><span>門市評價</span><b>${stars(s.rating)} ${s.rating.toFixed(1)}</b></div>
@@ -500,7 +545,8 @@ export class UI {
   onSheetClick(e) {
     const b = e.target.closest('button'); if (!b) return;
     const s = this.s, d = b.dataset, sim = this.sim;
-    if (d.pcat) { this.prodCat = d.pcat; }
+    if (d.stopthief) { const ag = sim.agents.find(x => x.id === +d.stopthief); if (ag && sim.stopThief(ag)) { this.G.haptic(); this.toast('🚨 「等一下！還沒結帳喔！」'); } }
+    else if (d.pcat) { this.prodCat = d.pcat; }
     else if (d.ocat) { this.cat = d.ocat; }
     else if (d.price) { s.prices[d.price] = Math.max(1, s.prices[d.price] + +d.d); }
     else if (d.allprice) { for (const p of PRODUCTS) s.prices[p.id] = Math.round(p.ref * +d.allprice); }
@@ -522,7 +568,7 @@ export class UI {
     else if (d.order) {
       const r = sim.placeOrder({ ...this.orderQty }, this.supplier);
       if (r.ok) { this.orderQty = {}; this.toast(`已下單 ${money(r.cost)}，${s.prep ? '已經送到倉庫' : this.supplier === 'cheap' ? '明早 7:00 到貨' : '2 小時後到貨'}`); }
-      else this.toast(`現金不足（需要 ${money(r.cost)}）`);
+      else this.toast(r.empty ? '還沒選要進的貨，先按「一鍵補足」或用 ＋ 加數量' : `現金不足（需要 ${money(r.cost)}）`);
     }
     else if (d.hire) {
       const st = s.candidates.find(x => x.id === +d.hire);

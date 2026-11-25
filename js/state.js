@@ -65,7 +65,7 @@ export function newGame() {
   };
   add('fridge', 0, 0, 0); add('fridge', 2, 0, 0); add('chiller', 4, 0, 0); add('hotcase', 6, 0, 0);
   add('shelf', 1, 2, 0, 'snack'); add('shelf', 4, 2, 0, 'instant'); add('shelf', 1, 4, 0, 'daily');
-  add('counter', 6, 4, 3); add('coffee', 7, 2, 3); add('plant', 7, 6, 0);
+  add('counter', 6, 4, 3); add('coffee', 7, 2, 3); add('plant', 7, 6, 0); add('table', 4, 6, 0);
   // 開店庫存：每個有擺設的類別，依架位數量平均分配到各品項
   for (const cat of carriedCats(s)) {
     const cap = s.fixtures.filter(f => f.cat === cat).reduce((n, f) => n + (FIXTURES[f.type].cap || 0), 0);
@@ -80,7 +80,7 @@ export function newGame() {
 }
 
 export function blankDay() {
-  return { revenue: 0, cogs: 0, customers: 0, items: 0, missed: 0, lost: 0, waste: 0, purchases: 0, wages: 0, rent: 0, branch: 0, byCat: {}, sold: {}, satSum: 0, satN: 0 };
+  return { revenue: 0, cogs: 0, customers: 0, items: 0, missed: 0, lost: 0, waste: 0, purchases: 0, wages: 0, rent: 0, branch: 0, byCat: {}, sold: {}, satSum: 0, satN: 0, stolen: 0, stolenN: 0, caught: 0 };
 }
 
 // ── 庫存計算 ──

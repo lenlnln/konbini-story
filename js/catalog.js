@@ -363,7 +363,7 @@ for (const [cat, C] of Object.entries(CATALOG)) {
   CATEGORIES[cat] = { name: C.name, icon: C.icon, color: C.color, no: C.no, fix: C.fix, start: !!C.start, unlock: C.unlock || [0, 0], adult: !!C.adult, service: !!C.service, pop: C.pop, aff: C.aff };
   let i = 0;
   const seen = new Set();
-  for (const line of C.lines) {
+  for (const [li, line] of C.lines.entries()) {
     for (let item of line.names.split('、')) {
       item = item.trim(); if (!item) continue;
       const m = item.match(/^([^=@]+)(?:=(\d+))?(?:@(\w+))?$/);
@@ -378,7 +378,7 @@ for (const [cat, C] of Object.entries(CATALOG)) {
       PRODUCTS.push({
         id: `${cat}_${i++}`, cat, name, ref,
         cost: Math.max(1, Math.round(ref * margin * (0.95 + hash(name) * 0.1))),
-        life, shape, color: guessColor(name, fallback),
+        life, shape, color: guessColor(name, fallback), art: `${cat}:${li}:${shape}`,
         ...(line.at ? { at: line.at } : {}),
         ...(/雨傘|折疊傘|雨衣/.test(name) ? { rain: true } : {}),
       });

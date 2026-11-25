@@ -5,6 +5,7 @@ import { RoundedBoxGeometry } from 'three/addons/RoundedBoxGeometry.js';
 import { RoomEnvironment } from 'three/addons/RoomEnvironment.js';
 import { FIXTURES, PRODUCT, STORE_LEVELS, STORE_FRONT_Z, DOOR_X, CATEGORIES, SPRITES } from './data.js';
 import { footprint } from './path.js';
+import { ART, ART_COLS } from './prodart.js';
 
 // ───────── 材質與幾何快取 ─────────
 const matCache = new Map();
@@ -155,6 +156,29 @@ function productMat(pid) {
   });
   return (prodMat[pid] = new THREE.MeshStandardMaterial({ map: tex, roughness: ['bottle', 'can', 'wine', 'tin'].includes(shape) ? 0.25 : 0.55, metalness: shape === 'can' || shape === 'tin' ? 0.4 : 0 }));
 }
+
+// ───────── 商品圖（AI 繪製，合成一張圖集）：貨架上用直立的圖卡陳列 ─────────
+let atlasMat = null;
+function iconMat() {
+  if (!atlasMat) {
+    const t = loadTex('art/products/atlas.webp');
+    atlasMat = new THREE.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0.28, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.7 });
+  }
+  return atlasMat;
+}
+const iconGeos = {};
+function iconGeo(idx) {
+  if (iconGeos[idx]) return iconGeos[idx];
+  const g = new THREE.PlaneGeometry(1, 1); g.translate(0, 0.5, 0);
+  const rows = Math.ceil(Object.keys(ART).length / ART_COLS) || 1;
+  const cx = idx % ART_COLS, cy = Math.floor(idx / ART_COLS), e = 0.002;
+  const u0 = cx / ART_COLS + e, u1 = (cx + 1) / ART_COLS - e, v1 = 1 - cy / rows - e, v0 = 1 - (cy + 1) / rows + e;
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) ? u1 : u0, uv.getY(i) ? v1 : v0);
+  return (iconGeos[idx] = g);
+}
+// 各設備的圖卡大小與傾斜（開放式的櫃子往後仰，從上面也看得到）
+const ICON = { shelf: [0.36, 0], fridge: [0.33, 0], chiller: [0.3, 0], hotcase: [0.27, -0.55], freezer: [0.27, -0.75], odenpot: [0.22, -0.6], steamer: [0.3, -0.2], tobacco: [0.22, 0] };
 
 // ═════════════════════════════════════════
 export class World {
@@ -549,7 +573,11 @@ export class World {
       }
       g.add(rb(W - 0.04, 0.2, 0.06, 0x1f4e79, 0, 1.7, -0.34, 0.03));
     } else if (type === 'fridge') {
-      g.add(rb(W - 0.04, 2.15, 0.86, 0xf4f6f8, 0, 1.075, -0.04, 0.05));
+      // 冰箱是中空的櫃體（之前是實心方塊，把裡面的飲料整個蓋住了）
+      g.add(rb(W - 0.04, 2.15, 0.1, 0xf4f6f8, 0, 1.075, -0.42, 0.04));
+      for (const sx of [-1, 1]) g.add(rb(0.09, 2.15, 0.86, 0xf4f6f8, sx * (W / 2 - 0.065), 1.075, -0.04, 0.04));
+      g.add(rb(W - 0.04, 0.3, 0.86, 0xf4f6f8, 0, 2.0, -0.04, 0.04));
+      g.add(rb(W - 0.04, 0.22, 0.86, 0xf4f6f8, 0, 0.11, -0.04, 0.04));
       g.add(mesh(G.box, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xe8f4ff, emissiveIntensity: 0.55, roughness: 0.5 }), 0, 1.1, -0.36, W - 0.26, 1.72, 0.04));
       for (const y of [0.35, 0.92, 1.49]) {
         g.add(mesh(G.box, mat(0xc9d3dc, { metalness: 0.4, roughness: 0.3 }), 0, y - 0.03, 0.02, W - 0.3, 0.03, 0.62));
@@ -698,18 +726,29 @@ export class World {
       byPid.set(pid, order.filter(s => segSet.has(s)).slice(0, f.stock[pid]));
     });
     for (const [pid, im] of o.userData.inst) if (!byPid.has(pid)) im.count = 0;
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
+    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0), eul = new THREE.Euler();
     for (const [pid, idxs] of byPid) {
       let im = o.userData.inst.get(pid);
+      const ic = ICON[f.type], art = ART[PRODUCT[pid]?.art];
       if (!im) {
-        im = new THREE.InstancedMesh(productGeo(SHAPE[pid]), productMat(pid), slots.length);
+        im = ic && art !== undefined ? new THREE.InstancedMesh(iconGeo(art), iconMat(), slots.length) : new THREE.InstancedMesh(productGeo(SHAPE[pid]), productMat(pid), slots.length);
+        im.userData.icon = !!(ic && art !== undefined);
         im.castShadow = false; im.receiveShadow = true; im.frustumCulled = false;
         o.add(im); o.userData.inst.set(pid, im);
       }
       idxs.forEach((si, k) => {
         const sl = slots[si];
-        q.setFromAxisAngle(up, (((si * 7919) % 13) / 13 - 0.5) * 0.25);
-        m4.compose(v.set(...sl.pos), q, sc.set(...sl.scale)); im.setMatrixAt(k, m4);
+        if (im.userData.icon) {
+          const jit = (((si * 7919) % 13) / 13 - 0.5);
+          q.setFromEuler(eul.set(ic[1], jit * 0.18, 0));
+          const z = sl.pos[2] + (si % 2 ? 0.02 : -0.02) + 0.04;
+          const k2 = ic[0] * (0.96 + jit * 0.08);
+          m4.compose(v.set(sl.pos[0], sl.pos[1], z), q, sc.set(k2, k2, k2));
+        } else {
+          q.setFromAxisAngle(up, (((si * 7919) % 13) / 13 - 0.5) * 0.25);
+          m4.compose(v.set(...sl.pos), q, sc.set(...sl.scale));
+        }
+        im.setMatrixAt(k, m4);
       });
       im.count = idxs.length; im.instanceMatrix.needsUpdate = true;
     }
@@ -795,7 +834,8 @@ export class World {
     u.pop = Math.max(0, u.pop - dt * 3.2);
     const popY = Math.sin(u.pop * Math.PI) * 0.09;
     const breath = Math.sin(u.idleP) * 0.014 * (1 - w);
-    u.body.position.y = hop * 0.065 * w + popY;
+    u.sitK = (u.sitK || 0) + ((ag?.sitting ? 1 : 0) - (u.sitK || 0)) * k;
+    u.body.position.y = hop * 0.065 * w + popY - 0.2 * u.sitK;
     const squash = (1 - hop) * 0.05 * w;
     const sy = 1 - squash + breath + popY * 0.5;
     const sxk = 1 + squash * 0.8 - breath * 0.6;
@@ -807,6 +847,77 @@ export class World {
     u.spr.scale.set(u.baseW * sxk * fv, u.h * sy, 1);
     // 影子跟著彈跳縮放
     const sh = o.children[1]; if (sh) { const s2 = 0.75 * (1 - (hop * 0.065 * w + popY) * 1.6); sh.scale.set(s2, s2, 1); }
+  }
+
+  // ═════════ 送貨車 ═════════
+  makeTruck() {
+    const g = new THREE.Group();
+    g.add(rb(3.0, 1.75, 1.7, 0xfafafa, -0.55, 1.3, 0, 0.08));
+    g.add(rb(3.04, 0.22, 1.74, 0x2e9d4a, -0.55, 0.62, 0, 0.04));
+    g.add(rb(1.3, 1.35, 1.62, 0x2e6da4, 1.6, 0.98, 0, 0.18, { roughness: 0.35 }));
+    g.add(rb(0.08, 0.6, 1.4, 0x263238, 2.25, 1.25, 0, 0.03, { roughness: 0.1, metalness: 0.4 }));
+    g.add(rb(4.3, 0.3, 1.5, 0x37474f, 0.05, 0.42, 0, 0.05));
+    const deco = canvasTex(512, 200, (x, w, h) => {
+      x.fillStyle = '#fafafa'; x.fillRect(0, 0, w, h);
+      x.fillStyle = '#2e9d4a'; x.fillRect(0, h - 34, w, 34);
+      x.fillStyle = '#f6c344'; x.beginPath(); x.roundRect(28, 36, 120, 100, 18); x.fill();
+      x.font = `72px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('📦', 88, 88);
+      x.fillStyle = '#1f4e79'; x.font = `bold 58px ${FONT}`; x.textAlign = 'left'; x.fillText('鮮貨配送', 170, 80);
+      x.fillStyle = '#5b6b78'; x.font = `bold 26px ${FONT}`; x.fillText('每日新鮮直送門市', 172, 132);
+    });
+    for (const sz of [1, -1]) {
+      const d = new THREE.Mesh(G.plane, new THREE.MeshStandardMaterial({ map: deco, roughness: 0.6 }));
+      d.scale.set(2.9, 1.13, 1); d.position.set(-0.55, 1.32, sz * 0.86); if (sz < 0) d.rotation.y = Math.PI; g.add(d);
+    }
+    g.userData.wheels = [];
+    for (const [wx, wz] of [[-1.35, 0.78], [1.45, 0.78], [-1.35, -0.78], [1.45, -0.78]]) {
+      const wgrp = new THREE.Group(); wgrp.position.set(wx, 0.36, wz);
+      const wm = mesh(G.cyl, mat(0x222222), 0, 0, 0, 0.72, 0.28, 0.72); wm.rotation.x = Math.PI / 2; wgrp.add(wm);
+      wgrp.add(mesh(G.box, mat(0x9e9e9e), 0, 0, wz > 0 ? 0.15 : -0.15, 0.3, 0.06, 0.02));
+      g.add(wgrp); g.userData.wheels.push(wgrp);
+    }
+    return g;
+  }
+  truckArrive() {
+    if (!this.truck) { this.truck = this.makeTruck(); this.fxGroup.add(this.truck); }
+    const T = this.truckAnim;
+    if (T && T.phase !== 'out') { T.boxes = (T.boxes || 0) + 3; return; }
+    this.truckAnim = { phase: 'in', t: 0, boxes: 5, boxT: 0 };
+    this.truck.visible = true;
+  }
+  tick(dt) {
+    const A = this.truckAnim, tr = this.truck;
+    if (A && tr) {
+      A.t += dt;
+      const stopX = DOOR_X + 3.2, z = STORE_FRONT_Z + 5.4;
+      let x = tr.position.x, v = 0;
+      if (A.phase === 'in') { const k = Math.min(1, A.t / 2.2), e = 1 - Math.pow(1 - k, 3); x = -38 + (stopX + 38) * e; v = (1 - k) * 3; if (k >= 1) { A.phase = 'stop'; A.t = 0; } }
+      else if (A.phase === 'stop') {
+        x = stopX; A.boxT -= dt;
+        if (A.boxes > 0 && A.boxT <= 0) { A.boxes--; A.boxT = 0.28; this.spawnBox(stopX - 1.9, z); }
+        if (A.t > 2.6 && A.boxes <= 0) { A.phase = 'out'; A.t = 0; }
+      } else { const k = Math.min(1, A.t / 2.4); x = stopX + 45 * k * k; v = k * 3; if (k >= 1) { this.truckAnim = null; tr.visible = false; } }
+      tr.position.set(x, 0, z);
+      tr.position.y = A.phase === 'stop' ? 0 : Math.abs(Math.sin(A.t * 18)) * 0.02;
+      for (const w of tr.userData.wheels) w.rotation.z -= v * dt * 3;
+    }
+    // 送進店裡的紙箱
+    if (this.boxes?.length) {
+      for (const b of this.boxes) {
+        b.t += dt; const k = Math.min(1, b.t / 0.9);
+        b.o.position.lerpVectors(b.from, b.to, k); b.o.position.y = b.from.y + (b.to.y - b.from.y) * k + Math.sin(k * Math.PI) * 1.2;
+        b.o.rotation.y += dt * 4;
+        if (k >= 1) { this.fxGroup.remove(b.o); b.done = true; }
+      }
+      this.boxes = this.boxes.filter(b => !b.done);
+    }
+  }
+  spawnBox(x, z) {
+    this.boxes = this.boxes || [];
+    const o = rb(0.42, 0.32, 0.36, 0xc8955a, 0, 0, 0, 0.03);
+    o.add(mesh(G.box, mat(0xe8c48a), 0, 0.165, 0, 0.44, 0.01, 0.08));
+    this.fxGroup.add(o);
+    this.boxes.push({ o, t: 0, from: new THREE.Vector3(x, 1.0, z - 0.9), to: new THREE.Vector3(DOOR_X + 0.5, 0.2, STORE_FRONT_Z - 0.4) });
   }
 
   // ═════════ 髒污 ═════════

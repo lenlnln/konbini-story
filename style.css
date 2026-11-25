@@ -155,7 +155,7 @@ textarea#savecode { width: 100%; height: 70px; font-size: 11px; resize: vertical
 
 /* ── 3D 疊加：泡泡、飄字 ── */
 #overlay { position: fixed; inset: 0; pointer-events: none; z-index: 5; overflow: hidden; }
-.bubble, .nametag, .float, .checkout-btn { position: absolute; left: 0; top: 0; will-change: transform; }
+.bubble, .nametag, .float, .checkout-btn, .stop-btn { position: absolute; left: 0; top: 0; will-change: transform; }
 .bubble { background: #fff; padding: 4px 9px; border-radius: 12px; font-size: 12.5px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .25); }
 .bubble::after { content: ''; position: absolute; left: 50%; bottom: -5px; margin-left: -5px; border: 5px solid transparent; border-bottom: 0; border-top-color: #fff; }
 .nametag { font-size: 10.5px; font-weight: 700; color: #b0004f; background: rgba(255, 255, 255, .8); padding: 1px 6px; border-radius: 8px; white-space: nowrap; }
@@ -164,6 +164,24 @@ textarea#savecode { width: 100%; height: 70px; font-size: 11px; resize: vertical
 .checkout-btn { pointer-events: auto; background: var(--yellow); color: #3a2a00; font-weight: 800; font-size: 14px; padding: 8px 12px; border-radius: 14px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, .3); animation: pulse 1s infinite alternate; }
 @keyframes pulse { to { filter: brightness(1.12); box-shadow: 0 3px 16px rgba(246, 195, 68, .9); } }
+/* 偷竊：喝止按鈕 */
+.stop-btn { pointer-events: auto; background: #e53935; color: #fff; font-weight: 900; font-size: 15px; padding: 9px 14px; border-radius: 16px; border: 2px solid #fff;
+  box-shadow: 0 3px 12px rgba(229, 57, 53, .6); animation: alarm .45s infinite alternate; white-space: nowrap; }
+@keyframes alarm { from { filter: brightness(1); } to { filter: brightness(1.25); box-shadow: 0 0 0 5px rgba(229, 57, 53, .25), 0 3px 18px rgba(229, 57, 53, .9); } }
+.float.box { color: #8a5a00; font-size: 18px; }
+/* 到貨通知 */
+#delivery { position: fixed; left: 50%; top: calc(118px + var(--sat)); z-index: 26; width: min(360px, 92vw); background: #fffdf6; border-radius: 18px; padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .28); border: 2px solid #f6c344; transform: translate(-50%, -30px) scale(.9); opacity: 0; pointer-events: none; transition: .35s cubic-bezier(.2, 1.4, .4, 1); }
+#delivery.show { transform: translate(-50%, 0) scale(1); opacity: 1; pointer-events: auto; }
+#delivery .dl-head { display: flex; gap: 10px; align-items: center; }
+#delivery .dl-truck { font-size: 34px; animation: truckin .6s ease-out; }
+@keyframes truckin { from { transform: translateX(-60px); } to { transform: none; } }
+#delivery .dl-head b { display: block; font-size: 18px; color: #1f4e79; }
+#delivery .dl-head small { color: #6b6b6b; }
+#delivery .dl-items { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+#delivery .dl-items span { background: #fff3cd; border-radius: 10px; padding: 4px 8px; font-size: 13px; }
+#delivery .dl-items b { color: #c77700; }
+#delivery .dl-foot { color: #8a8a8a; font-size: 12px; }
 
 #toasts { position: fixed; top: calc(76px + var(--sat)); left: 50%; transform: translateX(-50%); z-index: 30; display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
 .toast { background: rgba(31, 78, 121, .95); color: #fff; padding: 9px 16px; border-radius: 14px; font-size: 14px; box-shadow: 0 4px 14px rgba(0, 0, 0, .3); transition: .5s; max-width: 90vw; }
@@ -239,3 +257,5 @@ body.prep.sheet-open #tutorial p, body.prep.building #tutorial p { font-size: 12
 @media (max-width: 700px) { body.prep #tutorial { top: calc(96px + var(--sat)); } }
 @media (max-height: 520px) { body.prep #tutorial { top: calc(60px + var(--sat)); width: min(320px, 46vw); padding: 8px 10px; } #tutorial p { font-size: 12px; } }
 body.prep #assistant { display: none !important; }
+.bar.sat { margin: 2px 0 6px; }
+.bar.sat i { display: block; height: 100%; background: linear-gradient(90deg, #ffb300, #43a047); border-radius: 4px; }
