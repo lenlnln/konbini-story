@@ -450,9 +450,13 @@ export class World {
       x.strokeStyle = '#ffd54f'; x.lineWidth = 5; for (let i = 0; i < 8; i++) { const a = i * Math.PI / 4; x.beginPath(); x.moveTo(70 + Math.cos(a) * 42, 56 + Math.sin(a) * 42); x.lineTo(70 + Math.cos(a) * 52, 56 + Math.sin(a) * 52); x.stroke(); }
       x.fillStyle = '#1f4e79'; x.font = `bold 34px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('日', 70, 58);
       x.fillStyle = '#ffffff'; x.font = `bold 66px ${FONT}`; x.textAlign = 'left'; x.fillText(name, 140, 58);
-      x.font = `bold 30px ${FONT}`; x.textAlign = 'right'; x.fillStyle = '#ffe082'; x.fillText('OPEN 24H', w - 30, 58);
+      x.font = `bold 30px ${FONT}`; x.textAlign = 'right'; x.fillStyle = '#ffe082'; x.fillText(this.hoursLabel(), w - 30, 58);
     });
   }
+  is24() { const h = this.state.hours || { open: 0, close: 24 }; return h.open === h.close % 24; }
+  hoursLabel() { const h = this.state.hours; return this.is24() ? 'OPEN 24H' : `${String(h.open).padStart(2, '0')}:00-${String(h.close % 24).padStart(2, '0')}:00`; }
+  // 打烊時店內燈光調暗
+  setOpen(open) { this.closed = !open; }
   makePylonTexture(lvl) {
     return canvasTex(256, 384, (x, w, h) => {
       x.fillStyle = '#ffffff'; x.fillRect(0, 0, w, h);
@@ -460,7 +464,7 @@ export class World {
       x.fillStyle = grd; x.fillRect(0, 0, w, h * 0.62);
       x.fillStyle = '#ffd54f'; x.beginPath(); x.arc(w / 2, 112, 70, 0, Math.PI * 2); x.fill();
       x.fillStyle = '#1f4e79'; x.font = `bold 76px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('日', w / 2, 116);
-      x.fillStyle = '#fff'; x.font = `bold 34px ${FONT}`; x.fillText(lvl >= 2 ? '24H 營業' : '營業中', w / 2, 212);
+      x.fillStyle = '#fff'; x.font = `bold 34px ${FONT}`; x.fillText(this.is24() ? '24H 營業' : '營業中', w / 2, 212);
       x.fillStyle = '#f6c344'; x.fillRect(0, h * 0.62, w, 22); x.fillStyle = '#ff8a65'; x.fillRect(0, h * 0.62 + 22, w, 10);
       x.fillStyle = '#1f4e79'; x.font = `bold 40px ${FONT}`; x.fillText(this.state.storeName.slice(0, 5), w / 2, h * 0.82);
     });
@@ -646,7 +650,7 @@ export class World {
     const spr = new THREE.Sprite(sm);
     spr.center.set(0.5, 0.0);
     const h = info.h * (outfit.scale || 1);
-    const setAspect = () => { const img = tex.image; const a = img && img.width ? img.width / img.height : 0.5; spr.scale.set(h * a, h, 1); };
+    const setAspect = () => { const img = tex.image; const a = img && img.width ? img.width / img.height : 0.5; g.userData.baseW = h * a; spr.scale.set(h * a, h, 1); };
     if (tex.image && tex.image.width) setAspect(); else spr.scale.set(h * 0.5, h, 1); // 圖片載入後在 animatePerson 修正比例
     const body = new THREE.Group(); body.add(spr); g.add(body);
     const shadow = new THREE.Mesh(G.plane, this.shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.scale.set(0.75, 0.75, 1); shadow.position.y = 0.035; g.add(shadow);
@@ -657,7 +661,15 @@ export class World {
     };
     const basket = icon('🧺', h * 0.25);
     const carry = icon('📦', h * 0.45);
-    g.userData = { body, spr, basket, carry, phase: Math.random() * 6, last: new THREE.Vector3(), h, fixAspect: setAspect };
+    g.userData = {
+      body, spr, basket, carry, h, fixAspect: setAspect, baseW: h * 0.5,
+      phase: Math.random() * 6, idleP: Math.random() * 6, walk: 0, flip: 1, flipVis: 1, pop: 0, lookT: 2 + Math.random() * 5,
+      vis: null, last: new THREE.Vector3(),
+      // 每個人走路的位置有一點偏移，不會全部踩在同一條線上
+      off: new THREE.Vector2((Math.random() - 0.5) * 0.22, (Math.random() - 0.5) * 0.22),
+      stride: 0.9 + Math.random() * 0.25,
+    };
+    if (tex.image && tex.image.width) setAspect();
     return g;
   }
   emojiTex(e) {
@@ -665,35 +677,61 @@ export class World {
     if (!this.emojiCache.has(e)) this.emojiCache.set(e, canvasTex(96, 96, (x, w, h) => { x.font = `76px ${FONT}`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(e, w / 2, h / 2 + 4); }));
     return this.emojiCache.get(e);
   }
+  // 動作反應（拿商品、結帳、補貨時彈一下）
+  pop(o, k = 1) { if (o?.userData) o.userData.pop = Math.max(o.userData.pop, k); }
   animatePerson(o, moving, dt, speedMul = 1) {
     const u = o.userData;
     if (!u.spr) return;
-    if (u.spr.scale.y > 0 && u.spr.material.map.image && u.spr.material.map.image.width && !u.aspectOk) { u.fixAspect(); u.aspectOk = true; }
-    // 依螢幕上的移動方向左右翻轉
+    if (!u.aspectOk && u.spr.material.map.image && u.spr.material.map.image.width) { u.fixAspect(); u.aspectOk = true; }
     const p = o.position;
-    if (moving) {
-      const dx = p.x - u.last.x, dz = p.z - u.last.z;
-      if (dx * dx + dz * dz > 1e-6) {
-        this._right = this._right || new THREE.Vector3();
-        this._right.setFromMatrixColumn(this.camera.matrixWorld, 0);
-        const sx = dx * this._right.x + dz * this._right.z;
-        if (Math.abs(sx) > 0.002) u.flip = sx < 0 ? -1 : 1;
-      }
-      u.phase += dt * 11 * speedMul;
-      const hop = Math.abs(Math.sin(u.phase));
-      u.body.position.y = hop * 0.07;
-      u.body.scale.set(1 + (1 - hop) * 0.04, 1 - (1 - hop) * 0.04, 1);
-      u.spr.material.rotation = Math.sin(u.phase) * 0.05;
-    } else {
-      u.phase += dt * 2.4;
-      u.body.position.y = 0;
-      const b = Math.sin(u.phase) * 0.012;
-      u.body.scale.set(1 - b, 1 + b, 1);
-      u.spr.material.rotation *= 0.8;
+    // ── 位置平滑：模擬是走格子，畫面上用緩動追上去，轉角自然變圓、起步停步有加減速 ──
+    const ag = u.agent; // 模擬中的格子位置（真正的位置）
+    const tx = (ag ? ag.x + 0.5 : p.x) + u.off.x, tz = (ag ? ag.z + 0.5 : p.z) + u.off.y;
+    if (!u.vis || Math.hypot(u.vis.x - tx, u.vis.z - tz) > 1.6) { u.vis = new THREE.Vector3(tx, 0, tz); u.last.copy(u.vis); }
+    const k = 1 - Math.exp(-dt * 7);
+    u.vis.x += (tx - u.vis.x) * k; u.vis.z += (tz - u.vis.z) * k;
+    const dx = u.vis.x - u.last.x, dz = u.vis.z - u.last.z;
+    const v = dt > 0 ? Math.hypot(dx, dz) / dt : 0;
+    u.last.copy(u.vis);
+    p.x = u.vis.x; p.z = u.vis.z;
+    // ── 面向：依螢幕上的左右移動翻面，翻面時像紙片一樣轉過去 ──
+    if (v > 0.25) {
+      this._right = this._right || new THREE.Vector3();
+      this._right.setFromMatrixColumn(this.camera.matrixWorld, 0);
+      const sx = dx * this._right.x + dz * this._right.z;
+      if (Math.abs(sx) > 0.15 * v * dt) u.flip = sx < 0 ? -1 : 1;
     }
-    const sx = Math.abs(u.spr.scale.x) * (u.flip || 1);
-    u.spr.scale.x = sx;
-    u.last.copy(p);
+    // ── 走路強度：0 = 站著，1 = 全速走 ──
+    const target = Math.min(1, v / 1.2);
+    u.walk += (target - u.walk) * (1 - Math.exp(-dt * 10));
+    const w = u.walk;
+    // 待機時偶爾左右張望
+    if (w < 0.05) {
+      u.lookT -= dt;
+      if (u.lookT < 0) { u.flip = -u.flip; u.lookT = 2.5 + Math.random() * 6; }
+    }
+    u.flipVis += (u.flip - u.flipVis) * (1 - Math.exp(-dt * 14));
+    // ── 步伐 ──
+    u.phase += dt * (6 + 5 * speedMul) * u.stride * (0.25 + 0.75 * w);
+    u.idleP += dt * 1.8;
+    const step = Math.sin(u.phase);
+    const hop = Math.abs(step);
+    // 彈跳反應
+    u.pop = Math.max(0, u.pop - dt * 3.2);
+    const popY = Math.sin(u.pop * Math.PI) * 0.09;
+    const breath = Math.sin(u.idleP) * 0.014 * (1 - w);
+    u.body.position.y = hop * 0.065 * w + popY;
+    const squash = (1 - hop) * 0.05 * w;
+    const sy = 1 - squash + breath + popY * 0.5;
+    const sxk = 1 + squash * 0.8 - breath * 0.6;
+    // 左右擺動 + 往前進方向微微前傾；站著時重心慢慢移動
+    const lean = -u.flipVis * 0.055 * w;
+    const sway = step * 0.075 * w + Math.sin(u.idleP * 0.5) * 0.018 * (1 - w);
+    u.spr.material.rotation = lean + sway;
+    const fv = Math.sign(u.flipVis) * Math.max(0.12, Math.abs(u.flipVis));
+    u.spr.scale.set(u.baseW * sxk * fv, u.h * sy, 1);
+    // 影子跟著彈跳縮放
+    const sh = o.children[1]; if (sh) { const s2 = 0.75 * (1 - (hop * 0.065 * w + popY) * 1.6); sh.scale.set(s2, s2, 1); }
   }
 
   // ═════════ 髒污 ═════════
@@ -725,9 +763,10 @@ export class World {
     this.sun.position.set(b.W / 2 - Math.cos(ang) * 16 - 4, 8 + Math.max(0, Math.sin(ang)) * 16, b.D + 10);
     this.sun.target.position.set(b.W / 2, 0, (b.z0 + b.D) / 2);
     const night = 1 - day;
-    this.storeLight.intensity = night * (16 + this.state.upgrades.light * 6);
-    this.floorMat.emissive.setRGB(0.3 * night, 0.28 * night, 0.24 * night);
-    this.signMat.emissiveIntensity = 0.15 + night * 0.9;
+    const lit = this.closed ? 0.25 : 1;
+    this.storeLight.intensity = night * (16 + this.state.upgrades.light * 6) * lit;
+    this.floorMat.emissive.setRGB(0.3 * night * lit, 0.28 * night * lit, 0.24 * night * lit);
+    this.signMat.emissiveIntensity = 0.15 + night * 0.9 * lit;
     this.pylonMat.emissiveIntensity = 0.2 + night * (0.6 + this.state.upgrades.sign * 0.15);
     for (const m of this.winMats || []) m.emissive.setRGB(0.6 * night, 0.48 * night, 0.25 * night);
     for (const m of this.lampMats || []) m.emissive.setRGB(night * 1.5, night * 1.35, night * 0.8);

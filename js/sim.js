@@ -69,6 +69,7 @@ export class Sim {
     this.spawnAcc += perMin * dt * MIN_PER_SEC;
     const inside = this.agents.filter(a => a.kind === 'customer' && !a.left).length;
     const maxInside = 14 + this.s.level * 7;
+    if (!this.isOpen()) this.spawnAcc = 0; // 打烊中不會有新客人
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
       if (inside < maxInside) this.spawnCustomer(); else this.s.today.full = (this.s.today.full || 0) + 1;
@@ -280,6 +281,7 @@ export class Sim {
     }
     this.world.updateFixtureStock(f);
     a.obj.userData.basket.visible = a.basket.length >= 2;
+    this.world.pop(a.obj);
     if (Math.random() < 0.18) this.say(a, CATEGORIES[PRODUCT[pid].cat].icon + ' ' + PRODUCT[pid].name, 1.6);
   }
   counters() { return this.s.fixtures.filter(f => f.type === 'counter'); }
@@ -400,6 +402,7 @@ export class Sim {
     if (a.wait < 5) a.sat += 3;
     this.ui.floatText(c, `+$${total}`);
     this.ui.coin();
+    this.world.pop(a.obj, 0.9); const ca = st && this.staffAgent(st.id); if (ca) this.world.pop(ca.obj, 0.6);
     if (st) { st.xp += 2 + a.basket.length * 0.5; this.checkLevel(st); }
     a.basket = []; a.obj.userData.basket.visible = false;
     a.checkout = 0;
@@ -408,10 +411,25 @@ export class Sim {
   }
 
   // ───────── 店員 ─────────
-  onShift(st) {
+  // 營業時間
+  isOpen(h = this.hour) {
+    const o = this.s.hours.open, c = this.s.hours.close % 24;
+    if (o === c) return true;
+    return o < c ? h >= o && h < c : h >= o || h < c;
+  }
+  openHours() { let n = 0; for (let h = 0; h < 24; h++) if (this.isOpen(h)) n++; return n; }
+  // 店員只在營業時間上班（開店前一小時先來準備）
+  workHour(h) { return this.isOpen(h) || this.isOpen((h + 1) % 24); }
+  onShift(st, h = this.hour) {
+    if (!this.workHour(h)) return false;
     if (st.shift === 'all') return true;
-    const h = this.hour;
     return st.shift === 'day' ? h >= 7 && h < 19 : h >= 19 || h < 7;
+  }
+  // 依實際上班時數算日薪
+  dayWage(st) {
+    let n = 0; for (let h = 0; h < 24; h++) if (this.onShift(st, h)) n++;
+    const full = st.shift === 'all' ? 24 : 12;
+    return Math.round(st.wage * (st.shift === 'all' ? 1.7 : 1) * n / full);
   }
   hasManager() { return this.s.staff.some(x => x.role === 'manager' && this.onShift(x)); }
   staffAgent(sid) { return this.agents.find(a => a.kind === 'staff' && a.sid === sid); }
@@ -537,7 +555,7 @@ export class Sim {
         const f = s.fixtures.find(x => x.id === a.task);
         if (f) {
           const n = fillFixture(s, f, 1, 14 + (st?.lvl || 1) * 3);
-          this.world.updateFixtureStock(f);
+          this.world.updateFixtureStock(f); this.world.pop(a.obj, 0.8);
           if (st) { st.xp += 3; this.checkLevel(st); }
           if (n && Math.random() < 0.25) this.say(a, '補貨完成！', 1.4);
         }
@@ -627,6 +645,9 @@ export class Sim {
 
   // ───────── 時間事件 ─────────
   onHour(h) {
+    const was = this.isOpen((h + 23) % 24), now = this.isOpen(h);
+    if (now && !was) { this.ui.news('🔑', '開門營業囉！'); this.ui.assistant('開店時間到了，今天也要加油！', 4); }
+    if (!now && was) { this.ui.news('🌙', '打烊了，店裡的客人結完帳就會離開。'); }
     this.checkDeliveries();
     if (h === 22) this.autoOrder();
     this.staffShifts();
@@ -644,7 +665,7 @@ export class Sim {
   endDay(endedDay) {
     const s = this.s, T = s.today;
     // 薪資、租金
-    for (const st of s.staff) { const w = Math.round(st.wage * (st.shift === 'all' ? 1.7 : 1)); T.wages += w; }
+    for (const st of s.staff) T.wages += this.dayWage(st);
     T.rent = STORE_LEVELS[s.level].rent;
     // 分店收入
     const wk = [6, 0].includes(endedDay % 7);

@@ -37,6 +37,7 @@ export function newGame() {
   const s = {
     version: 1,
     storeName: '日日好商店',
+    hours: { open: 0, close: 24 }, // 營業時間（open = close 視為 24 小時）
     cash: 50000, t: 7 * 60, level: 0,
     upgrades: { sign: 0, light: 0, floor: 0 },
     fixtures: [], inventory: {}, prices: {}, orders: [],

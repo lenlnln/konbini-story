@@ -44,6 +44,8 @@ export class UI {
     $('#rot-l').addEventListener('click', () => this.G.rotateCam(-1));
     $('#rot-r').addEventListener('click', () => this.G.rotateCam(1));
     $('#cam-reset').addEventListener('click', () => this.G.resetCam());
+    $('#clock-chip').addEventListener('click', () => this.open('hours'));
+    $('#topbar .brand').addEventListener('click', () => this.open('hours'));
     this.sheetEl.addEventListener('click', e => this.onSheetClick(e));
     this.sheetEl.addEventListener('change', e => this.onSheetChange(e));
   }
@@ -61,6 +63,8 @@ export class UI {
     $('#v-time').textContent = `${pad(Math.floor(mod / 60))}:${pad(Math.floor(mod % 60))}`;
     $('#v-weather').textContent = WEATHERS[s.weather].icon;
     $('#store-name').textContent = s.storeName;
+    const open = sim.isOpen();
+    if (this._open !== open) { this._open = open; const el = $('#v-open'); el.textContent = open ? '營業中' : '休息中'; el.classList.toggle('closed', !open); this.G.world.setOpen?.(open); }
     // 門市資訊 / 庫存
     this.sideT = (this.sideT || 0) - dt;
     if (this.sideT <= 0) { this.sideT = 0.5; this.renderSide(); this.renderMission(); if (this.panel && this.livePanels.has(this.panel)) this.refreshPanel(); }
@@ -213,7 +217,7 @@ export class UI {
     if (this.reportOpen) { this.reportOpen = false; this.G.resumeAfterReport(); }
   }
   refreshPanel() {
-    const fn = { products: this.pProducts, orders: this.pOrders, staff: this.pStaff, report: this.pReport, missions: this.pMissions, expand: this.pExpand, system: this.pSystem, fixture: this.pFixture, agent: this.pAgent, daily: this.pDaily }[this.panel];
+    const fn = { products: this.pProducts, orders: this.pOrders, staff: this.pStaff, report: this.pReport, missions: this.pMissions, expand: this.pExpand, system: this.pSystem, hours: this.pHours, fixture: this.pFixture, agent: this.pAgent, daily: this.pDaily }[this.panel];
     if (!fn) return;
     const body = $('#sheet-body');
     const keep = body.scrollTop;
@@ -278,10 +282,10 @@ export class UI {
       const ag = sim.staffAgent(st.id);
       const status = hire ? '' : ag ? ({ cashier: '收銀中', toCounter: '前往收銀台', toStock: '去倉庫拿貨', grab: '拿貨中', toShelf: '搬貨中', stocking: '補貨中', toClean: '去打掃', cleaning: '打掃中', offduty: '下班中', arrive: '上班途中' }[ag.state] || '待命') : '休息中';
       return `<div class="card">
-        <div class="avatar" style="background-image:url(art/chars/${st.role === 'manager' ? 'manager' : (st.sprite || (st.id % 2 ? 'staff_f' : 'staff_m'))}.webp)"></div>
+        <div class="avatar" style="background-image:url(art/faces/${st.role === 'manager' ? 'manager' : (st.sprite || (st.id % 2 ? 'staff_f' : 'staff_m'))}.webp)"></div>
         <div class="card-main">
           <b>${esc(st.name)} <small>${st.role === 'manager' ? '店長' : '店員'}${hire ? '' : ` · Lv${st.lvl}`}</small></b>
-          <small>收銀技巧 ${'★'.repeat(st.skill)}${'☆'.repeat(3 - st.skill)} · 速度 ${'★'.repeat(st.speed)}${'☆'.repeat(3 - st.speed)} · 日薪 ${money(st.wage)}</small>
+          <small>收銀技巧 ${'★'.repeat(st.skill)}${'☆'.repeat(3 - st.skill)} · 速度 ${'★'.repeat(st.speed)}${'☆'.repeat(3 - st.speed)} · 日薪 ${money(hire ? st.wage : this.sim.dayWage(st))}</small>
           ${hire ? `<small>希望班別：${shiftName[st.shift]}</small>` : `<div class="bar thin"><i style="width:${st.xp / xpNeed(st.lvl) * 100}%"></i></div><small>${status}</small>`}
         </div>
         <div class="card-act">${hire ? `<button class="btn primary" data-hire="${st.id}">雇用</button>` :
@@ -341,10 +345,35 @@ export class UI {
         : '<p class="hint">🔒 擴建為「大型門市」後才能開分店。</p>') : '<p class="hint">🎉 你已經是連鎖企業了！</p>'}
       <p class="hint">🚧 增加樓層、更多裝潢樣式會在之後的版本加入。</p>`];
   }
+  pHours() {
+    const s = this.s, sim = this.sim, { open, close } = s.hours;
+    const n = sim.openHours();
+    const presets = [[0, 24, '24 小時'], [7, 23, '7:00–23:00'], [6, 24, '6:00–24:00'], [8, 22, '8:00–22:00'], [10, 2, '10:00–02:00']];
+    const opt = (from, to, cur) => { let o = ''; for (let h = from; h <= to; h++) o += `<option value="${h}" ${h === cur ? 'selected' : ''}>${pad(h)}:00</option>`; return o; };
+    const wages = s.staff.reduce((t, st) => t + sim.dayWage(st), 0);
+    return ['營業時間', `
+      <p class="hint">打烊時不會有新客人進來，店員也會下班（開店前一小時會先來準備）。薪水依實際上班時數計算，營業時間短可以省人事費，但也會少掉那段時間的生意。</p>
+      <div class="row"><span>目前</span><b>${n === 24 ? '24 小時營業' : `${pad(open)}:00 – ${pad(close % 24)}:00（${n} 小時）`}</b></div>
+      <div class="row"><span>店員薪資（每天）</span><b>${money(wages)}</b></div>
+      <h4>快速設定</h4>
+      <div class="btnrow">${presets.map(([o, c, t]) => `<button class="btn ${o === open && c % 24 === close % 24 ? 'primary' : ''}" data-hours="${o},${c}">${t}</button>`).join('')}</div>
+      <h4>自訂</h4>
+      <div class="btnrow hours-pick"><label>開店 <select data-hopen="1">${opt(0, 23, open)}</select></label><label>打烊 <select data-hclose="1">${opt(1, 24, close)}</select></label></div>
+      <p class="muted">開店和打烊設成同一個時間就是 24 小時營業。跨過午夜也可以，例如 10:00 開到 02:00。</p>`];
+  }
+  setHours(o, c) {
+    const s = this.s; s.hours = { open: o, close: c };
+    this.sim.staffShifts();
+    this.G.rebuildStore();
+    const n = this.sim.openHours();
+    this.news('🕐', n === 24 ? '改成 24 小時營業。' : `營業時間改為 ${pad(o)}:00 – ${pad(c % 24)}:00。`);
+    save(s);
+  }
   pSystem() {
     const s = this.s;
     return ['系統設定', `
       <h4>店名</h4><div class="btnrow"><input id="in-name" maxlength="8" value="${esc(s.storeName)}"><button class="btn" data-rename="1">更改</button></div>
+      <h4>營業時間</h4><div class="btnrow"><button class="btn" data-gohours="1">🕐 設定營業時間</button></div>
       <h4>畫質</h4>
       <div class="btnrow"><button class="btn ${s.settings.quality === 'high' ? 'primary' : ''}" data-q="high">高畫質</button><button class="btn ${s.settings.quality === 'low' ? 'primary' : ''}" data-q="low">省電</button>
       <button class="btn ${s.settings.shadows ? 'primary' : ''}" data-shadow="1">陰影：${s.settings.shadows ? '開' : '關'}</button></div>
@@ -355,7 +384,7 @@ export class UI {
       <h4>安裝到手機</h4>
       <p class="hint">iPhone：用 Safari 開啟 → 分享 → 「加入主畫面」。<br>Android：Chrome 選單 → 「安裝應用程式 / 加到主畫面」。<br>安裝後就算沒有網路也能玩。</p>
       <div class="btnrow"><button class="btn danger" data-newgame="1">重新開始</button></div>
-      <p class="muted">便利商店物語 v0.1 · 原創作品</p>`];
+      <p class="muted">便利商店物語 v0.3 · 原創作品</p>`];
   }
   pFixture(fid) {
     const s = this.s, f = s.fixtures.find(x => x.id === fid);
@@ -511,10 +540,17 @@ export class UI {
     else if (d.goorder) { this.cat = d.goorder; this.open('orders'); return; }
     else if (d.editfix) { const id = +d.editfix; this.close(); this.G.build.enter(); this.G.build.selectExisting(id); return; }
     else if (d.closereport) { this.close(); return; }
+    else if (d.gohours) { this.open('hours'); return; }
+    else if (d.hours) { const [o, c] = d.hours.split(',').map(Number); this.setHours(o, c); }
     this.refreshPanel();
   }
   onSheetChange(e) {
     const t = e.target;
+    if (t.dataset.hopen || t.dataset.hclose) {
+      const h = this.s.hours;
+      this.setHours(t.dataset.hopen ? +t.value : h.open, t.dataset.hclose ? +t.value : h.close);
+      this.refreshPanel(); return;
+    }
     if (t.dataset.shift) {
       const st = this.s.staff.find(x => x.id === +t.dataset.shift);
       if (st) { st.shift = t.value; this.sim.staffShifts(); this.refreshPanel(); }
