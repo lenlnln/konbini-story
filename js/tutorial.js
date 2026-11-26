@@ -135,7 +135,7 @@ export class Tutorial {
       G.ui.toast('架上幾乎是空的！確定要開店嗎？再按一次「開始營業」');
       return;
     }
-    s.prep = false; delete s.tut;
+    s.prep = false; delete s.tut; s.openDay = Math.floor(s.t / 1440) + 1;
     s.t = Math.floor(s.t / 1440) * 1440 + 7 * 60;
     document.body.classList.remove('prep');
     document.querySelectorAll('.tut-hl').forEach(e => e.classList.remove('tut-hl'));
@@ -149,6 +149,7 @@ export class Tutorial {
       [600, '開門囉！客人會自己進來挑商品、排隊結帳。點客人可以看他在想什麼喔！'],
       [8000, '收銀台排太多人時，可以點「💁 幫忙結帳」，或去「員工」多請一位店員。'],
       [16000, '左上角是今天的任務，完成會有獎金。每天打烊結算時會出現日報！'],
+      [24000, '剛開幕客人還不多，口碑傳開後大約一週會越來越熱鬧。趁現在熟悉進貨吧！'],
     ];
     for (const [ms, t] of tips) setTimeout(() => G.ui.assistant(t, 7), ms);
   }

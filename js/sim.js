@@ -47,6 +47,7 @@ export class Sim {
     if (h !== this.lastHour) { this.lastHour = h; this.onHour(h); }
     if (this.day !== this.lastDay) { const ended = this.lastDay; this.lastDay = this.day; this.endDay(ended); }
     this.spawn(simDt);
+    if (this.s.orders.length) this.checkDeliveries();
     this.decideAcc += simDt;
     if (this.decideAcc > 0.4) { this.decideAcc = 0; this.urgent = this.needUrgentRestock(); this.staffShifts(); for (const a of this.agents) if (a.kind === 'staff' && a.state === 'idle') this.staffDecide(a); }
     for (const a of [...this.agents]) this.updateAgent(a, simDt);
@@ -78,12 +79,20 @@ export class Sim {
     for (const c of carriedCats(this.s)) for (const p of catProducts(c)) { sum += this.s.prices[p.id] / p.ref; n++; }
     this._aprT = now; return (this._apr = n ? sum / n : 1);
   }
+  // 新店期：剛開幕人潮少，口碑慢慢傳開，大約一週後達到正常人潮
+  openingRamp() {
+    const s = this.s; if (s.prep) return 0;
+    if (s.openDay == null) return 1; // 舊存檔已經營業很久了
+    const d = this.day - s.openDay + (this.minOfDay / 1440); // 開幕後第幾天（含小數）
+    return Math.min(1, 0.3 + d * 0.12);
+  }
   spawn(dt) {
     const curve = HOUR_CURVE[this.hour] * (1 + (HOUR_CURVE[(this.hour + 1) % 24] - HOUR_CURVE[this.hour]) * (this.minOfDay % 60) / 60);
-    const perMin = 14 * curve * this.trafficFactor() / 60;
+    const perMin = 14 * curve * this.trafficFactor() * this.openingRamp() / 60;
     this.spawnAcc += perMin * dt * MIN_PER_SEC;
     const inside = this.agents.filter(a => a.kind === 'customer' && !a.left).length;
-    const maxInside = 14 + this.s.level * 7;
+    const ramp = this.openingRamp();
+    const maxInside = Math.round((14 + this.s.level * 7) * (0.45 + 0.55 * ramp));
     if (!this.isOpen()) this.spawnAcc = 0; // 打烊中不會有新客人
     while (this.spawnAcc >= 1) {
       this.spawnAcc -= 1;
@@ -802,7 +811,7 @@ export class Sim {
     if (cost > s.cash) return { ok: false, cost };
     s.cash -= cost; s.today.purchases += cost;
     // 開店準備期間下的單，批發商馬上送到
-    const arrive = s.prep ? s.t : supplier === 'fast' ? s.t + 120 : (Math.floor(s.t / 1440) + 1) * 1440 + 7 * 60;
+    const arrive = s.prep ? s.t : s.t + (supplier === 'fast' ? 60 : 240); // 快捷 1 小時、批發 4 小時（不用等到隔天）
     s.orders.push({ id: s.nextId++, arrive, items, supplier });
     if (s.prep) { this.checkDeliveries(); if (this.G.tutorial) this.G.tutorial.flags.ordered = true; }
     return { ok: true, cost, arrive };

@@ -72,7 +72,7 @@ export function newGame() {
   for (const cat of carriedCats(s)) {
     const cap = s.fixtures.filter(f => f.cat === cat).reduce((n, f) => n + (FIXTURES[f.type].cap || 0), 0);
     const ps = CAT_PRODUCTS[cat], perish = ps[0].life !== Infinity;
-    const per = Math.max(1, Math.ceil(cap * (perish ? 1.0 : 1.1) / ps.length)); // 大約剛好擺滿架子，倉庫要靠開店前進貨
+    const per = Math.max(1, Math.ceil(cap * (perish ? 1.5 : 2.0) / ps.length)); // 擺滿架子，倉庫還有一些備貨
     for (const p of ps) s.inventory[p.id].push({ q: per, exp: p.life === Infinity ? 99999 : p.life });
   }
   s.staff.push(makeStaff(s.nextId++, 'clerk', { name: '林小葵', shift: 'all', skill: 2, speed: 2 }));

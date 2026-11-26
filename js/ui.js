@@ -120,8 +120,7 @@ export class UI {
     $('#side-info').innerHTML = `
       <div class="kv"><span>今日營收</span><b class="pos">${money(T.revenue)}</b></div>
       <div class="kv"><span>顧客流量</span><b>${T.customers} 人</b></div>
-      <div class="kv"><span>平均客單價</span><b>${money(avgTicket)}</b></div>
-`;
+      <div class="kv"><span>平均客單價</span><b>${money(avgTicket)}</b></div>${this.sim.openingRamp() < 1 && !s.prep ? `<div class="kv" title="剛開幕人潮較少，大約一週後達到正常人潮"><span>新店期人潮</span><b>${Math.round(this.sim.openingRamp() * 100)}%</b></div>` : ''}`;
     $('#side-trend').innerHTML = this.trendSvg();
     const rows = [];
     for (const [cat, c] of Object.entries(CATEGORIES)) {
@@ -414,8 +413,8 @@ export class UI {
     }).join('');
     return ['進貨', `${s.prep ? '<p class="hint">🔑 開店準備中：現在下單，貨會<b>馬上送到倉庫</b>。</p>' : ''}
       <div class="seg">
-        <button class="${this.supplier === 'cheap' ? 'on' : ''}" data-sup="cheap"><b>大盛批發</b><small>進價 9 折 · 明早 7:00 到貨</small></button>
-        <button class="${this.supplier === 'fast' ? 'on' : ''}" data-sup="fast"><b>快捷物流</b><small>進價 +10%、運費 $150 · 2 小時到貨</small></button>
+        <button class="${this.supplier === 'cheap' ? 'on' : ''}" data-sup="cheap"><b>大盛批發</b><small>進價 9 折 · 4 小時到貨</small></button>
+        <button class="${this.supplier === 'fast' ? 'on' : ''}" data-sup="fast"><b>快捷物流</b><small>進價 +10%、運費 $150 · 1 小時到貨</small></button>
       </div>
       <div class="btnrow"><button class="btn primary" data-autofill="all">一鍵補足全部庫存</button><button class="btn" data-autofill="cat">只補這一類</button><button class="btn" data-oclear="1">清空</button></div>
       ${this.catTabs(cat, 'ocat', ocats)}${rows}
@@ -654,7 +653,7 @@ export class UI {
     }
     else if (d.order) {
       const r = sim.placeOrder({ ...this.orderQty }, this.supplier);
-      if (r.ok) { this.orderQty = {}; this.toast(`已下單 ${money(r.cost)}，${s.prep ? '已經送到倉庫' : this.supplier === 'cheap' ? '明早 7:00 到貨' : '2 小時後到貨'}`); }
+      if (r.ok) { this.orderQty = {}; this.toast(`已下單 ${money(r.cost)}，${s.prep ? '已經送到倉庫' : this.supplier === 'cheap' ? '4 小時後到貨' : '1 小時後到貨'}`); }
       else this.toast(r.empty ? '還沒選要進的貨，先按「一鍵補足」或用 ＋ 加數量' : `現金不足（需要 ${money(r.cost)}）`);
     }
     else if (d.hire) {
