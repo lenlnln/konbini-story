@@ -164,8 +164,9 @@ export class UI {
   // 左側「任務目標」：今日任務（自動勾選），下面一行是目前的長期任務
   renderMission() {
     const s = this.s, d = s.daily, m = MISSIONS[s.missionIdx];
-    const qs = d ? d.list.map(q => `<div class="q${q.done ? ' done' : ''}"><span class="cb${q.done ? ' ok' : ''}">${q.done ? '✓' : ''}</span><p>${esc(questText(q))}<i style="width:${questPct(s, q) * 100}%"></i></p><span class="pr">${questFmt(s, q)}</span></div>`).join('') : '<div class="muted">開始營業後就會有今日任務</div>';
-    $('#mission').innerHTML = `<h3>⭐ 任務目標</h3>${qs}<div class="q long"><span class="cb">🎯</span><p>${m ? esc(m.text) : '全部長期目標完成！'}</p><span class="pr">${m ? money(m.reward) : '🏆'}</span></div>`;
+    const now = Date.now();
+    const qs = d ? d.list.map(q => `<div class="q${q.done ? ' done' : ''}${q.done && now - q.doneAt > 2300 ? ' out' : ''}${q.fresh && now - q.fresh < 2500 ? ' fresh' : ''}"><span class="cb${q.done ? ' ok' : ''}">${q.done ? '✓' : ''}</span><p>${esc(questText(q))}<i style="width:${questPct(s, q) * 100}%"></i></p><span class="pr">${questFmt(s, q)}</span></div>`).join('') : '<div class="muted">開始營業後就會有今日任務</div>';
+    $('#mission').innerHTML = `<h3>⭐ 任務目標${d?.doneN ? `<small class="qn">今日已完成 ${d.doneN}</small>` : ''}</h3>${qs}<div class="q long"><span class="cb">🎯</span><p>${m ? esc(m.text) : '全部長期目標完成！'}</p><span class="pr">${m ? money(m.reward) : '🏆'}</span></div>`;
   }
   news(icon, text) {
     const s = this.s, day = Math.floor(s.t / 1440) + 1, mod = s.t % 1440;

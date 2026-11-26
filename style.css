@@ -348,3 +348,10 @@ body.prep.sheet-open #tutorial p, body.prep.building #tutorial p { font-size: 12
 body.prep #assistant { display: none !important; }
 .bar.sat { margin: 2px 0 6px; }
 .bar.sat i { display: block; height: 100%; background: linear-gradient(90deg, #ffb300, #43a047); border-radius: 4px; }
+
+/* v0.8.2 任務輪替：完成後淡出、新任務亮一下 */
+.q { transition: opacity .9s, transform .9s; }
+.q.out { opacity: 0; transform: translateX(-24px); }
+.q.fresh { animation: qfresh 1.2s ease 2; border-radius: 6px; }
+@keyframes qfresh { 0%, 100% { background: transparent; } 50% { background: rgba(255, 224, 102, .28); } }
+#mission h3 .qn { margin-left: auto; font-size: calc(12 * var(--u)); font-weight: 700; color: #7ff09a; }

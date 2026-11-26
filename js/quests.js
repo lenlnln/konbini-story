@@ -55,16 +55,49 @@ export function makeDailyQuests(s, day) {
   return { day, list };
 }
 
-// 每秒檢查一次：自動勾選完成的任務並發獎勵
+// 完成一個任務後接著發的新任務：同類型就提高目標，滿意度/資金類換成別種
+function followUp(s, done, list) {
+  const lvl = s.owner?.lvl || 1, T = s.today;
+  const has = k => list.some(q => q !== done && q.kind === k);
+  const make = kind => {
+    if (kind === 'rev') { const t = round(Math.max(T.revenue + 1500, done.kind === 'rev' ? done.target * 1.5 : 0), 500); return { kind, target: t, reward: round(t * 0.06, 100), xp: 30 + lvl * 5 }; }
+    if (kind === 'cust') { const t = round(T.customers + Math.max(15, done.kind === 'cust' ? done.target * 0.4 : 20), 5); return { kind, target: t, reward: 300 + (t - T.customers) * 15, xp: 25 + lvl * 4 }; }
+    if (kind === 'items') { const t = round(T.items + Math.max(30, done.kind === 'items' ? done.target * 0.4 : 40), 10); return { kind, target: t, reward: 300 + (t - T.items) * 8, xp: 25 + lvl * 4 }; }
+    if (kind === 'rating') return s.rating < 4.8 ? { kind, target: Math.min(4.9, Math.round((s.rating + 0.15) * 10) / 10), reward: 1500, xp: 45 + lvl * 5 } : null;
+    if (kind === 'fund') { const next = STORE_LEVELS[s.level + 1]; return next && s.cash < next.cost ? { kind, target: next.cost, reward: 1500, xp: 50 } : null; }
+    if (kind === 'sat') return (T.satN >= 8 && T.satSum / T.satN >= 88) ? null : { kind, target: 88, reward: 1200, xp: 40 + lvl * 4 };
+    return null;
+  };
+  const first = done.kind === 'sat' ? 'cust' : done.kind === 'fund' ? 'rating' : done.kind;
+  for (const k of [first, 'cust', 'items', 'rev', 'rating', 'sat', 'fund']) {
+    if (has(k)) continue;
+    const q = make(k);
+    if (q && questCur(s, q) < q.target) return q;
+  }
+  return null;
+}
+
+// 每秒檢查一次：自動勾選完成的任務並發獎勵；打勾幾秒後移除，換上新任務
 export function checkDailyQuests(s, day, ui) {
   if (!s.daily || s.daily.day !== day) s.daily = makeDailyQuests(s, day);
-  for (const q of s.daily.list) {
-    if (q.done || questCur(s, q) < q.target) continue;
-    q.done = true;
+  const now = Date.now(), list = s.daily.list;
+  for (let i = 0; i < list.length; i++) {
+    const q = list[i];
+    if (q.done) {
+      if (!q.doneAt || now - q.doneAt >= 3500) { // 打勾顯示 3.5 秒後換新任務
+        const nq = followUp(s, q, list);
+        if (nq) { nq.done = false; nq.fresh = now; list[i] = nq; ui.news('📋', `新任務：${questText(nq)}`); }
+        else list.splice(i--, 1);
+      }
+      continue;
+    }
+    if (questCur(s, q) < q.target) continue;
+    q.done = true; q.doneAt = now;
     s.cash += q.reward;
-    ui.toast(`✅ 今日任務完成：${questText(q)}　+$${q.reward.toLocaleString()}`);
-    ui.news('✅', `完成今日任務「${questText(q)}」，獲得 $${q.reward.toLocaleString()} 與 ${q.xp} 經驗值`);
-    ui.assistant(`「${questText(q)}」達成了！獎金 $${q.reward.toLocaleString()} 已經入帳囉～`, 6, true);
+    s.daily.doneN = (s.daily.doneN || 0) + 1;
+    ui.toast(`✅ 任務完成：${questText(q)}　+$${q.reward.toLocaleString()}`);
+    ui.news('✅', `完成任務「${questText(q)}」，獲得 $${q.reward.toLocaleString()} 與 ${q.xp} 經驗值`);
+    ui.assistant(`「${questText(q)}」達成了！獎金 $${q.reward.toLocaleString()} 已經入帳，下一個任務也準備好囉～`, 6, true);
     addOwnerXp(s, q.xp, ui);
   }
 }

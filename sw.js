@@ -1,5 +1,5 @@
 // 離線快取：改版時請更新 VERSION
-const VERSION = 'konbini-v0.8.1';
+const VERSION = 'konbini-v0.8.2';
 const FILES = [
   './', './index.html', './style.css', './manifest.webmanifest',
   './js/main.js', './js/data.js', './js/catalog.js', './js/state.js', './js/path.js', './js/world.js', './js/sim.js', './js/ui.js', './js/build.js', './js/tutorial.js', './js/prodart.js', './js/quests.js', './js/chars.js', './art/faces/owner.webp', './art/faces/assistant.webp', './art/products/atlas.webp',
